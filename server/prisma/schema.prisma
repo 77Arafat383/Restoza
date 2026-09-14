@@ -1,0 +1,152 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  name         String
+  email        String    @unique
+  phone        String?
+  passwordHash String
+  role         String    @default("WAITER") // SUPER_ADMIN, MANAGER, WAITER, KITCHEN, CASHIER
+  status       String    @default("ACTIVE") // ACTIVE, INACTIVE
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  ordersTaken  Order[]   @relation("WaiterOrders")
+}
+
+model MenuCategory {
+  id          Int        @id @default(autoincrement())
+  name        String     @unique
+  description String?
+  icon        String?
+  items       MenuItem[]
+  createdAt   DateTime   @default(now())
+}
+
+model MenuItem {
+  id              Int          @id @default(autoincrement())
+  categoryId      Int
+  category        MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  price           Float
+  discount        Float        @default(0)
+  imageUrl        String?
+  preparationTime Int          @default(15) // in minutes
+  isAvailable     Boolean      @default(true)
+  ingredients     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  orderItems      OrderItem[]
+}
+
+model RestaurantTable {
+  id          Int      @id @default(autoincrement())
+  tableNumber String   @unique // e.g. T-01, T-02
+  capacity    Int      @default(4)
+  status      String   @default("AVAILABLE") // AVAILABLE, OCCUPIED, RESERVED, CLEANING
+  location    String   @default("Main Dining") // Main Dining, Window, Patio, VIP
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders      Order[]
+}
+
+model Order {
+  id                 Int              @id @default(autoincrement())
+  orderNumber        String           @unique // e.g. ORD-101
+  tableId            Int?
+  table              RestaurantTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  customerName       String?          @default("Guest Customer")
+  customerPhone      String?
+  waiterId           Int?
+  waiter             User?            @relation("WaiterOrders", fields: [waiterId], references: [id], onDelete: SetNull)
+  orderType          String           @default("DINE_IN") // DINE_IN, TAKEAWAY
+  status             String           @default("PENDING") // PENDING, CONFIRMED, PREPARING, READY, SERVED, COMPLETED, CANCELLED
+  subtotal           Float            @default(0)
+  discount           Float            @default(0)
+  tax                Float            @default(0)
+  serviceCharge      Float            @default(0)
+  total              Float            @default(0)
+  specialInstruction String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  orderItems         OrderItem[]
+  bills              Bill[]
+  feedbacks          Feedback[]
+}
+
+model OrderItem {
+  id                 Int      @id @default(autoincrement())
+  orderId            Int
+  order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId         Int
+  menuItem           MenuItem @relation(fields: [menuItemId], references: [id])
+  quantity           Int      @default(1)
+  unitPrice          Float
+  subtotal           Float
+  specialInstruction String?
+}
+
+model Bill {
+  id            Int       @id @default(autoincrement())
+  orderId       Int
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  billNumber    String    @unique // e.g. INV-2026-00101
+  subtotal      Float
+  tax           Float
+  serviceCharge Float     @default(0)
+  discount      Float     @default(0)
+  total         Float
+  status        String    @default("UNPAID") // UNPAID, PAID, CANCELLED
+  createdAt     DateTime  @default(now())
+
+  payments      Payment[]
+}
+
+model Payment {
+  id            Int       @id @default(autoincrement())
+  billId        Int
+  bill          Bill      @relation(fields: [billId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentMethod String    @default("CASH") // CASH, CARD, MOBILE_BANKING, ONLINE
+  paymentStatus String    @default("PAID") // PENDING, PAID, FAILED, REFUNDED
+  transactionId String?
+  paidAt        DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+}
+
+model Feedback {
+  id            Int      @id @default(autoincrement())
+  orderId       Int?
+  order         Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  customerName  String   @default("Guest Customer")
+  foodRating    Int      @default(5)
+  serviceRating Int      @default(5)
+  overallRating Int      @default(5)
+  comment       String?
+  createdAt     DateTime @default(now())
+}
+
+model RestaurantSetting {
+  id               Int      @id @default(1)
+  restaurantName   String   @default("Restoza")
+  tagline          String   @default("Fine Dining • Culinary Excellence")
+  taxRate          Float    @default(10.0) // in percent
+  serviceChargeRate Float   @default(5.0)  // in percent
+  currencySymbol   String   @default("৳")
+  address          String   @default("Gulshan 2, Diplomatic Enclave, Dhaka")
+  phone            String   @default("+880 1711-234567")
+  email            String   @default("contact@restoza.com")
+  updatedAt        DateTime @updatedAt
+}
