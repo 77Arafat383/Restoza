@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import RestozaLogo from '../../components/common/RestozaLogo';
 import { menuAPI, tableAPI, orderAPI, settingsAPI, feedbackAPI } from '../../services/api';
 import { useSocket } from '../../context/SocketContext';
-import { 
-  ShoppingBag, Search, Clock, Plus, Minus, Trash2, Check, Star, 
-  MapPin, Phone, Mail, ArrowRight, ShieldCheck, ChefHat, Sparkles, 
-  X, CheckCircle, Flame, UtensilsCrossed 
+import {
+  ShoppingBag, Search, Clock, Plus, Minus, Trash2, Check, Star,
+  MapPin, Phone, Mail, ArrowRight, ShieldCheck, ChefHat, Sparkles,
+  X, CheckCircle, Flame, UtensilsCrossed
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -108,7 +108,8 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
       prev
         .map((i) => {
           if (i.id === itemId) {
-            const newQty = i.quantity + delta;
+            const currentQty = parseInt(i.quantity) || 1;
+            const newQty = currentQty + delta;
             return newQty > 0 ? { ...i, quantity: newQty } : null;
           }
           return i;
@@ -117,13 +118,27 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
     );
   };
 
+  const setExactQuantity = (itemId, val) => {
+    setCart((prev) =>
+      prev.map((i) => {
+        if (i.id === itemId) {
+          if (val === '') return { ...i, quantity: '' };
+          const parsed = parseInt(val, 10);
+          if (isNaN(parsed) || parsed <= 0) return { ...i, quantity: 1 };
+          return { ...i, quantity: Math.min(999, parsed) };
+        }
+        return i;
+      })
+    );
+  };
+
   const removeFromCart = (itemId) => {
     setCart((prev) => prev.filter((i) => i.id !== itemId));
   };
 
   // Cart Calculations
-  const cartSubtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const cartDiscount = cart.reduce((sum, item) => sum + (item.discount || 0) * item.quantity, 0);
+  const cartSubtotal = cart.reduce((sum, item) => sum + item.price * (parseInt(item.quantity) || 1), 0);
+  const cartDiscount = cart.reduce((sum, item) => sum + (item.discount || 0) * (parseInt(item.quantity) || 1), 0);
   const discountedSubtotal = Math.max(0, cartSubtotal - cartDiscount);
   const cartTax = (discountedSubtotal * (settings.taxRate / 100));
   const cartServiceCharge = orderType === 'DINE_IN' ? (discountedSubtotal * (settings.serviceChargeRate / 100)) : 0;
@@ -148,7 +163,7 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
         specialInstruction,
         items: cart.map((i) => ({
           menuItemId: i.id,
-          quantity: i.quantity,
+          quantity: parseInt(i.quantity) || 1,
           specialInstruction: i.notes || null,
         })),
       };
@@ -208,7 +223,7 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
 
   return (
     <div className="min-h-screen bg-[#0a0a0d] text-slate-100 selection:bg-restoza-burgundy-600 selection:text-white">
-      
+
       {/* Top Banner & Header */}
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-[#0e0e13]/85 border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
@@ -253,7 +268,7 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
                 className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white transition-all"
               >
                 <ShieldCheck className="w-4 h-4 text-amber-400" />
-                <span>Staff Portal</span>
+                <span>Login</span>
               </button>
             )}
           </div>
@@ -267,7 +282,7 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-            
+
             <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold tracking-wider uppercase">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -344,7 +359,7 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
       {/* Interactive Digital Menu Section */}
       <section id="menu" className="py-16 bg-[#0e0e13]/60 border-t border-white/5 scroll-mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
+
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
             <div>
               <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400 uppercase tracking-widest mb-1.5">
@@ -376,11 +391,10 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
           <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-8 no-scrollbar">
             <button
               onClick={() => setSelectedCategory('all')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                selectedCategory === 'all'
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
-                  : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
-              }`}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${selectedCategory === 'all'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
+                : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
+                }`}
             >
               All Items ({menuItems.length})
             </button>
@@ -388,11 +402,10 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id.toString())}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                  selectedCategory === cat.id.toString()
-                    ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
-                    : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
-                }`}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${selectedCategory === cat.id.toString()
+                  ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
+                  : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
+                  }`}
               >
                 {cat.name} ({cat._count?.items || 0})
               </button>
@@ -415,7 +428,7 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
                     loading="lazy"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                  
+
                   {/* Category Pill */}
                   <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-black/60 backdrop-blur-md text-amber-300 border border-white/10 uppercase tracking-wider">
                     {item.category?.name || 'Artisan'}
@@ -520,10 +533,10 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
                 style={{
                   width:
                     activeOrder.status === 'PENDING' ? '25%' :
-                    activeOrder.status === 'CONFIRMED' ? '40%' :
-                    activeOrder.status === 'PREPARING' ? '65%' :
-                    activeOrder.status === 'READY' ? '85%' :
-                    activeOrder.status === 'SERVED' || activeOrder.status === 'COMPLETED' ? '100%' : '15%',
+                      activeOrder.status === 'CONFIRMED' ? '40%' :
+                        activeOrder.status === 'PREPARING' ? '65%' :
+                          activeOrder.status === 'READY' ? '85%' :
+                            activeOrder.status === 'SERVED' || activeOrder.status === 'COMPLETED' ? '100%' : '15%',
                 }}
               ></div>
             </div>
@@ -546,7 +559,7 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
       {isCartOpen && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-md bg-restoza-dark-900 border-l border-white/10 h-full flex flex-col p-6 shadow-2xl">
-            
+
             {/* Drawer Header */}
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
               <div className="flex items-center gap-2">
@@ -584,22 +597,47 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
                     />
                   </div>
 
-                  {/* Quantity Controls */}
-                  <div className="flex items-center gap-1 bg-black/50 border border-white/10 rounded-lg p-1">
+                  {/* Quantity Controls & Remove Action */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 bg-black/50 border border-white/10 rounded-lg p-1">
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.id, -1)}
+                        className="p-1 hover:text-amber-400 text-slate-400 transition-colors"
+                        title="Decrease quantity"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </button>
+                      <input
+                        type="number"
+                        min="1"
+                        max="999"
+                        value={item.quantity}
+                        onChange={(e) => setExactQuantity(item.id, e.target.value)}
+                        onBlur={() => {
+                          if (!item.quantity || parseInt(item.quantity) <= 0) {
+                            setExactQuantity(item.id, 1);
+                          }
+                        }}
+                        className="w-8 text-center text-xs font-semibold text-white bg-transparent border-0 focus:outline-none focus:bg-white/10 rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.id, 1)}
+                        className="p-1 hover:text-amber-400 text-slate-400 transition-colors"
+                        title="Increase quantity"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    </div>
+
                     <button
-                      onClick={() => updateQuantity(item.id, -1)}
-                      className="p-1 hover:text-amber-400 text-slate-400 transition-colors"
+                      type="button"
+                      onClick={() => removeFromCart(item.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg border border-transparent hover:border-rose-500/20 transition-all"
+                      title="Remove item"
                     >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="w-5 text-center text-xs font-semibold text-white">
-                      {item.quantity}
-                    </span>
-                    <button
-                      onClick={() => updateQuantity(item.id, 1)}
-                      className="p-1 hover:text-amber-400 text-slate-400 transition-colors"
-                    >
-                      <Plus className="w-3 h-3" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -622,22 +660,20 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
                   <button
                     type="button"
                     onClick={() => setOrderType('DINE_IN')}
-                    className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                      orderType === 'DINE_IN'
-                        ? 'bg-amber-500 text-slate-950 font-bold'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
+                    className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${orderType === 'DINE_IN'
+                      ? 'bg-amber-500 text-slate-950 font-bold'
+                      : 'text-slate-400 hover:text-white'
+                      }`}
                   >
                     Dine-In Table
                   </button>
                   <button
                     type="button"
                     onClick={() => setOrderType('TAKEAWAY')}
-                    className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                      orderType === 'TAKEAWAY'
-                        ? 'bg-amber-500 text-slate-950 font-bold'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
+                    className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${orderType === 'TAKEAWAY'
+                      ? 'bg-amber-500 text-slate-950 font-bold'
+                      : 'text-slate-400 hover:text-white'
+                      }`}
                   >
                     Takeaway / To-Go
                   </button>
@@ -782,9 +818,8 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
                         className="p-1.5 transition-transform hover:scale-110"
                       >
                         <Star
-                          className={`w-6 h-6 ${
-                            num <= fbFoodRating ? 'fill-amber-400 text-amber-400' : 'text-slate-600'
-                          }`}
+                          className={`w-6 h-6 ${num <= fbFoodRating ? 'fill-amber-400 text-amber-400' : 'text-slate-600'
+                            }`}
                         />
                       </button>
                     ))}
@@ -803,9 +838,8 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
                         className="p-1.5 transition-transform hover:scale-110"
                       >
                         <Star
-                          className={`w-6 h-6 ${
-                            num <= fbServiceRating ? 'fill-amber-400 text-amber-400' : 'text-slate-600'
-                          }`}
+                          className={`w-6 h-6 ${num <= fbServiceRating ? 'fill-amber-400 text-amber-400' : 'text-slate-600'
+                            }`}
                         />
                       </button>
                     ))}
@@ -941,17 +975,15 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
 
       {/* Footer & Location */}
       <footer id="contact" className="bg-[#07070a] border-t border-white/10 pt-16 pb-12 text-slate-400 text-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
-            
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+
             <div className="md:col-span-1 space-y-3">
               <RestozaLogo size="md" />
               <p className="text-slate-400 text-xs leading-relaxed">
                 {settings.tagline || 'Fine Dining • Culinary Excellence'}
               </p>
-              <p className="text-[11px] text-slate-500">
-                Centralized cloud operations powered by PostgreSQL & Supabase.
-              </p>
+
             </div>
 
             <div>
@@ -977,26 +1009,12 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
               </p>
             </div>
 
-            <div>
-              <h4 className="font-semibold text-white uppercase tracking-wider text-xs mb-3">Restaurant Operations</h4>
-              <p className="text-slate-400 text-xs mb-3">
-                Authorized staff, chefs, and cashiers can log in to the management platform.
-              </p>
-              <button
-                onClick={onOpenAuth}
-                className="w-full py-2.5 px-4 rounded-xl bg-white/5 border border-white/10 hover:border-amber-500/50 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all hover:bg-white/10"
-              >
-                <ShieldCheck className="w-4 h-4 text-amber-400" />
-                <span>Restaurant Staff Login</span>
-              </button>
-            </div>
-
           </div>
 
           <div className="pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
             <p>© 2026 Restoza Restaurant Management System. All rights reserved.</p>
             <p className="text-slate-400">
-              Tax ({settings.taxRate}%) & Service Charge ({settings.serviceChargeRate}%) editable by Super Admin.
+              Tax ({settings.taxRate}%) & Service Charge ({settings.serviceChargeRate}%) editable by Manager.
             </p>
           </div>
         </div>

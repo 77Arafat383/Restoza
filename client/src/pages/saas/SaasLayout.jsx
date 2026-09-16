@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
+import { authAPI } from '../../services/api';
 import RestozaLogo from '../../components/common/RestozaLogo';
 import {
   LayoutDashboard, Utensils, Grid3X3, ChefHat, UserCheck, DollarSign,
   Settings, Users, MessageSquare, LogOut, Globe, Bell, ChevronDown,
-  Menu, X, Sparkles, Crown, Shield
+  Menu, X, Sparkles, Crown, Shield, User, Lock, CheckCircle, AlertCircle
 } from 'lucide-react';
 
 export default function SaasLayout({
@@ -17,7 +18,55 @@ export default function SaasLayout({
   const { user, logout, demoLogin, isSuperAdmin, isManager, isWaiter, isKitchen, isCashier } = useAuth();
   const { connected } = useSocket();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
+
+  // Profile & Password Change States
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [changePasswordModalOpen, setChangePasswordModalOpen] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdError, setPwdError] = useState('');
+  const [pwdSuccess, setPwdSuccess] = useState('');
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPwdError('');
+    setPwdSuccess('');
+
+    if (!pwdForm.currentPassword) {
+      setPwdError('Please enter your current password.');
+      return;
+    }
+    if (!pwdForm.newPassword) {
+      setPwdError('Please enter a new password.');
+      return;
+    }
+    if (pwdForm.newPassword.length < 4) {
+      setPwdError('New password must be at least 4 characters.');
+      return;
+    }
+    if (pwdForm.newPassword !== pwdForm.confirmPassword) {
+      setPwdError('New passwords do not match.');
+      return;
+    }
+
+    setPwdLoading(true);
+    try {
+      await authAPI.changePassword({
+        currentPassword: pwdForm.currentPassword,
+        newPassword: pwdForm.newPassword,
+      });
+      setPwdSuccess('Password updated successfully!');
+      setPwdForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setTimeout(() => {
+        setChangePasswordModalOpen(false);
+        setPwdSuccess('');
+      }, 1500);
+    } catch (err) {
+      setPwdError(err.response?.data?.message || 'Failed to change password.');
+    } finally {
+      setPwdLoading(false);
+    }
+  };
 
   // Navigation Items according to role
   const navItems = [
@@ -25,55 +74,55 @@ export default function SaasLayout({
       id: 'dashboard',
       label: 'Executive Dashboard',
       icon: LayoutDashboard,
-      roles: ['SUPER_ADMIN', 'MANAGER'],
+      roles: ['MANAGER'],
     },
     {
       id: 'menu',
       label: 'Menu Management',
       icon: Utensils,
-      roles: ['SUPER_ADMIN', 'MANAGER'],
+      roles: ['MANAGER'],
     },
     {
       id: 'tables',
       label: 'Floor & Tables',
       icon: Grid3X3,
-      roles: ['SUPER_ADMIN', 'MANAGER', 'WAITER'],
+      roles: ['MANAGER', 'WAITER'],
     },
     {
       id: 'waiter',
-      label: 'Waiter POS & Floor',
+      label: 'Waiter & Floor',
       icon: UserCheck,
-      roles: ['SUPER_ADMIN', 'MANAGER', 'WAITER'],
+      roles: ['MANAGER', 'WAITER'],
     },
     {
       id: 'kitchen',
-      label: 'Kitchen Display (KDS)',
+      label: 'Kitchen Display',
       icon: ChefHat,
-      roles: ['SUPER_ADMIN', 'MANAGER', 'KITCHEN'],
+      roles: ['MANAGER', 'KITCHEN'],
     },
     {
       id: 'cashier',
       label: 'Cashier & Billing',
       icon: DollarSign,
-      roles: ['SUPER_ADMIN', 'MANAGER', 'CASHIER'],
+      roles: ['MANAGER', 'CASHIER'],
     },
     {
       id: 'feedback',
       label: 'Guest Reviews',
       icon: MessageSquare,
-      roles: ['SUPER_ADMIN', 'MANAGER'],
+      roles: ['MANAGER'],
     },
     {
       id: 'staff',
       label: 'Staff Management',
       icon: Users,
-      roles: ['SUPER_ADMIN', 'MANAGER'],
+      roles: ['MANAGER'],
     },
     {
       id: 'settings',
       label: 'Taxes & Settings',
       icon: Settings,
-      roles: ['SUPER_ADMIN', 'MANAGER'],
+      roles: ['MANAGER'],
     },
   ];
 
@@ -81,20 +130,8 @@ export default function SaasLayout({
     user ? item.roles.includes(user.role) : false
   );
 
-  const handleSwitchRole = async (newRole) => {
-    await demoLogin(newRole);
-    setRoleSwitcherOpen(false);
-    // Set appropriate default tab for the new role
-    if (newRole === 'KITCHEN') setActiveTab('kitchen');
-    else if (newRole === 'WAITER') setActiveTab('waiter');
-    else if (newRole === 'CASHIER') setActiveTab('cashier');
-    else setActiveTab('dashboard');
-  };
-
   const getRoleBadge = (role) => {
     switch (role) {
-      case 'SUPER_ADMIN':
-        return { label: 'Super Admin', bg: 'bg-purple-900/60 text-purple-300 border-purple-500/40' };
       case 'MANAGER':
         return { label: 'Restaurant Manager', bg: 'bg-amber-900/60 text-amber-300 border-amber-500/40' };
       case 'WAITER':
@@ -104,7 +141,7 @@ export default function SaasLayout({
       case 'CASHIER':
         return { label: 'Head Cashier', bg: 'bg-emerald-900/60 text-emerald-300 border-emerald-500/40' };
       default:
-        return { label: role, bg: 'bg-slate-800 text-slate-300 border-slate-700' };
+        return { label: role || 'Staff', bg: 'bg-slate-800 text-slate-300 border-slate-700' };
     }
   };
 
@@ -112,7 +149,7 @@ export default function SaasLayout({
 
   return (
     <div className="min-h-screen bg-[#09090c] text-slate-100 flex flex-col md:flex-row">
-      
+
       {/* Mobile Top Navbar */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-[#111117] border-b border-white/10 z-40 sticky top-0">
         <RestozaLogo size="sm" />
@@ -128,13 +165,12 @@ export default function SaasLayout({
 
       {/* Sidebar Navigation */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#0d0d12] border-r border-white/10 flex flex-col justify-between transition-transform duration-300 md:translate-x-0 md:static ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#0d0d12] border-r border-white/10 flex flex-col justify-between transition-transform duration-300 md:translate-x-0 md:sticky md:top-0 md:h-screen md:shrink-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
       >
-        <div>
+        <div className="flex flex-col min-h-0 flex-1">
           {/* Logo Branding */}
-          <div className="p-5 border-b border-white/10 flex items-center justify-between">
+          <div className="p-5 border-b border-white/10 flex items-center justify-between shrink-0">
             <RestozaLogo size="md" />
             <button
               onClick={() => setSidebarOpen(false)}
@@ -144,76 +180,19 @@ export default function SaasLayout({
             </button>
           </div>
 
-          {/* User Profile Card with Role Switcher */}
-          <div className="p-4 border-b border-white/5">
+          {/* User Profile Card*/}
+          <div className="p-4 border-b border-white/5 shrink-0">
             <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/10">
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-white truncate">{user?.name || 'Staff User'}</p>
-                  <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border mt-1 ${badge.bg}`}>
-                    {badge.label}
-                  </span>
                 </div>
-              </div>
-
-              {/* Quick Switch Role Dropdown */}
-              <div className="relative mt-2.5">
-                <button
-                  onClick={() => setRoleSwitcherOpen(!roleSwitcherOpen)}
-                  className="w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] font-medium rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-amber-300 transition-colors"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>Switch Role Demo</span>
-                  </span>
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-
-                {roleSwitcherOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1.5 bg-[#14141c] border border-amber-500/40 rounded-xl shadow-2xl p-1.5 z-50 space-y-1 animate-in fade-in">
-                    <button
-                      onClick={() => handleSwitchRole('SUPER_ADMIN')}
-                      className="w-full text-left px-2.5 py-1.5 text-[11px] rounded-lg hover:bg-purple-950/80 text-purple-200 flex items-center gap-2"
-                    >
-                      <Crown className="w-3.5 h-3.5 text-purple-400" />
-                      <span>Super Admin</span>
-                    </button>
-                    <button
-                      onClick={() => handleSwitchRole('MANAGER')}
-                      className="w-full text-left px-2.5 py-1.5 text-[11px] rounded-lg hover:bg-amber-950/80 text-amber-200 flex items-center gap-2"
-                    >
-                      <Shield className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Manager</span>
-                    </button>
-                    <button
-                      onClick={() => handleSwitchRole('WAITER')}
-                      className="w-full text-left px-2.5 py-1.5 text-[11px] rounded-lg hover:bg-blue-950/80 text-blue-200 flex items-center gap-2"
-                    >
-                      <UserCheck className="w-3.5 h-3.5 text-blue-400" />
-                      <span>Waiter (POS)</span>
-                    </button>
-                    <button
-                      onClick={() => handleSwitchRole('KITCHEN')}
-                      className="w-full text-left px-2.5 py-1.5 text-[11px] rounded-lg hover:bg-rose-950/80 text-rose-200 flex items-center gap-2"
-                    >
-                      <ChefHat className="w-3.5 h-3.5 text-rose-400" />
-                      <span>Kitchen Chef (KDS)</span>
-                    </button>
-                    <button
-                      onClick={() => handleSwitchRole('CASHIER')}
-                      className="w-full text-left px-2.5 py-1.5 text-[11px] rounded-lg hover:bg-emerald-950/80 text-emerald-200 flex items-center gap-2"
-                    >
-                      <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Cashier (Billing)</span>
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </div>
 
           {/* Navigation Links */}
-          <nav className="p-3 space-y-1 overflow-y-auto max-h-[calc(100vh-280px)]">
+          <nav className="p-3 space-y-1 overflow-y-auto flex-1">
             {filteredNav.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -224,11 +203,10 @@ export default function SaasLayout({
                     setActiveTab(item.id);
                     setSidebarOpen(false);
                   }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'bg-gradient-to-r from-restoza-burgundy-800 to-restoza-burgundy-900 text-white shadow-glow-burgundy border border-restoza-burgundy-600'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${isActive
+                    ? 'bg-gradient-to-r from-restoza-burgundy-800 to-restoza-burgundy-900 text-white shadow-glow-burgundy border border-restoza-burgundy-600'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
                 >
                   <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
                   <span>{item.label}</span>
@@ -239,7 +217,7 @@ export default function SaasLayout({
         </div>
 
         {/* Bottom Actions */}
-        <div className="p-4 border-t border-white/10 space-y-2">
+        <div className="p-4 border-t border-white/10 space-y-2 shrink-0">
           {/* Back to Website Button */}
           <button
             onClick={onBackToWebsite}
@@ -247,15 +225,6 @@ export default function SaasLayout({
           >
             <Globe className="w-3.5 h-3.5 text-amber-400" />
             <span>Public Dining Website</span>
-          </button>
-
-          {/* Logout */}
-          <button
-            onClick={logout}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-red-950/40 hover:bg-red-900/60 text-red-300 transition-colors border border-red-500/20"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Sign Out</span>
           </button>
         </div>
       </aside>
@@ -275,13 +244,66 @@ export default function SaasLayout({
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={onBackToWebsite}
-              className="hidden sm:flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-medium"
-            >
-              <Globe className="w-3.5 h-3.5" />
-              <span>View Customer Website</span>
-            </button>
+
+            {/* Profile Dropdown Button */}
+            <div className="relative">
+              <button
+                onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all text-xs font-semibold focus:outline-none"
+              >
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-restoza-burgundy-700 to-amber-600 flex items-center justify-center text-white font-bold text-xs shadow-md">
+                  {user?.name ? user.name.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
+                </div>
+                <div className="hidden sm:block text-left">
+                  <p className="text-xs font-bold leading-none text-white">{user?.name || 'Staff Member'}</p>
+                  <span className="text-[10px] text-amber-400 font-normal">{badge.label}</span>
+                </div>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${profileMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Profile Menu Dropdown */}
+              {profileMenuOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-[#14141c] border border-white/15 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 space-y-1">
+                  {/* User Info Card */}
+                  <div className="p-3 rounded-xl bg-white/[0.04] border border-white/5 mb-1">
+                    <p className="text-xs font-bold text-white truncate">{user?.name || 'Staff User'}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{user?.email || 'user@restoza.com'}</p>
+                    <div className="mt-1.5">
+                      <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badge.bg}`}>
+                        {badge.label}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Change Password Option */}
+                  <button
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      setPwdError('');
+                      setPwdSuccess('');
+                      setPwdForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                      setChangePasswordModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
+                  >
+                    <Lock className="w-4 h-4 text-amber-400" />
+                    <span>Change Password</span>
+                  </button>
+
+                  {/* Sign Out Option */}
+                  <button
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      logout();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-rose-300 hover:text-rose-100 hover:bg-rose-950/60 rounded-xl transition-colors border border-transparent hover:border-rose-500/20"
+                  >
+                    <LogOut className="w-4 h-4 text-rose-400" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -290,6 +312,105 @@ export default function SaasLayout({
           {children}
         </main>
       </div>
+
+      {/* Change Password Modal */}
+      {changePasswordModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md bg-[#12121a] border border-white/15 rounded-3xl p-6 shadow-2xl relative">
+            <button
+              onClick={() => setChangePasswordModalOpen(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Change Password</h3>
+                <p className="text-xs text-slate-400">Update security details for your account</p>
+              </div>
+            </div>
+
+            {pwdError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-950/60 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{pwdError}</span>
+              </div>
+            )}
+
+            {pwdSuccess && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <span>{pwdSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={pwdForm.currentPassword}
+                  onChange={(e) => setPwdForm({ ...pwdForm, currentPassword: e.target.value })}
+                  placeholder="Enter current password"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-500/60"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={pwdForm.newPassword}
+                  onChange={(e) => setPwdForm({ ...pwdForm, newPassword: e.target.value })}
+                  placeholder="Enter new password (min. 4 chars)"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-500/60"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  value={pwdForm.confirmPassword}
+                  onChange={(e) => setPwdForm({ ...pwdForm, confirmPassword: e.target.value })}
+                  placeholder="Re-enter new password"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-500/60"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setChangePasswordModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-white/10 text-xs font-semibold text-slate-300 hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={pwdLoading}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-restoza-burgundy-700 text-xs font-bold text-white hover:opacity-90 transition-opacity shadow-lg disabled:opacity-50"
+                >
+                  {pwdLoading ? 'Updating...' : 'Update Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

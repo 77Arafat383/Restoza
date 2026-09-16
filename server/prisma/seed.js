@@ -32,11 +32,11 @@ async function main() {
 
   const users = [
     {
-      name: 'Super Admin',
+      name: 'System Admin Manager',
       email: 'admin@restoza.com',
       phone: '+880 1812-000001',
       passwordHash: hashedPasswordAdmin,
-      role: 'SUPER_ADMIN',
+      role: 'MANAGER',
     },
     {
       name: 'Restaurant Manager',

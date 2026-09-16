@@ -9,17 +9,36 @@ generator client {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  name         String
-  email        String    @unique
-  phone        String?
-  passwordHash String
-  role         String    @default("WAITER") // SUPER_ADMIN, MANAGER, WAITER, KITCHEN, CASHIER
-  status       String    @default("ACTIVE") // ACTIVE, INACTIVE
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id               Int       @id @default(autoincrement())
+  name             String
+  email            String    @unique
+  phone            String?
+  passwordHash     String
+  role             String    @default("WAITER") // MANAGER, WAITER, KITCHEN, CASHIER
+  status           String    @default("PENDING_APPROVAL") // PENDING_APPROVAL, ACTIVE, INACTIVE, FIRED
+  salary           Float     @default(0) // Working monthly/hourly salary
+  resetCode        String?
+  resetCodeExpires DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  ordersTaken  Order[]   @relation("WaiterOrders")
+  ordersTaken   Order[]        @relation("WaiterOrders")
+  staffPayments StaffPayment[]
+}
+
+model StaffPayment {
+  id            Int      @id @default(autoincrement())
+  staffId       Int
+  staff         User     @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentMethod String   @default("CASH") // CASH, BANK_TRANSFER, CHEQUE, MOBILE_BANKING
+  paymentType   String   @default("SALARY") // SALARY, BONUS, OVERTIME
+  note          String?
+  paidAt        DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([staffId])
+  @@index([paidAt])
 }
 
 model MenuCategory {
@@ -47,6 +66,9 @@ model MenuItem {
   updatedAt       DateTime     @updatedAt
 
   orderItems      OrderItem[]
+
+  @@index([categoryId])
+  @@index([isAvailable])
 }
 
 model RestaurantTable {
@@ -59,6 +81,8 @@ model RestaurantTable {
   updatedAt   DateTime @updatedAt
 
   orders      Order[]
+
+  @@index([status])
 }
 
 model Order {
@@ -84,6 +108,11 @@ model Order {
   orderItems         OrderItem[]
   bills              Bill[]
   feedbacks          Feedback[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([tableId])
+  @@index([waiterId])
 }
 
 model OrderItem {
@@ -96,6 +125,9 @@ model OrderItem {
   unitPrice          Float
   subtotal           Float
   specialInstruction String?
+
+  @@index([orderId])
+  @@index([menuItemId])
 }
 
 model Bill {
@@ -112,6 +144,10 @@ model Bill {
   createdAt     DateTime  @default(now())
 
   payments      Payment[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([orderId])
 }
 
 model Payment {
@@ -124,6 +160,9 @@ model Payment {
   transactionId String?
   paidAt        DateTime  @default(now())
   createdAt     DateTime  @default(now())
+
+  @@index([billId])
+  @@index([createdAt])
 }
 
 model Feedback {
@@ -136,6 +175,8 @@ model Feedback {
   overallRating Int      @default(5)
   comment       String?
   createdAt     DateTime @default(now())
+
+  @@index([orderId])
 }
 
 model RestaurantSetting {

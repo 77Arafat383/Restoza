@@ -1,23 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
 import NotificationToast from './components/common/NotificationToast';
 import AuthModal from './components/auth/AuthModal';
 
-// Public Dining Website
-import RestaurantWebsite from './pages/public/RestaurantWebsite';
+// Public Dining Website (Lazy Loaded)
+const RestaurantWebsite = lazy(() => import('./pages/public/RestaurantWebsite'));
 
-// SaaS / Operations Platform
+// SaaS / Operations Platform (Lazy Loaded)
 import SaasLayout from './pages/saas/SaasLayout';
-import ManagerDashboard from './pages/saas/ManagerDashboard';
-import MenuManagement from './pages/saas/MenuManagement';
-import TableManagement from './pages/saas/TableManagement';
-import KitchenKDS from './pages/saas/KitchenKDS';
-import WaiterPOS from './pages/saas/WaiterPOS';
-import CashierDesk from './pages/saas/CashierDesk';
-import AdminSettings from './pages/saas/AdminSettings';
-import StaffManagement from './pages/saas/StaffManagement';
-import FeedbackMonitor from './pages/saas/FeedbackMonitor';
+const ManagerDashboard = lazy(() => import('./pages/saas/ManagerDashboard'));
+const MenuManagement = lazy(() => import('./pages/saas/MenuManagement'));
+const TableManagement = lazy(() => import('./pages/saas/TableManagement'));
+const KitchenKDS = lazy(() => import('./pages/saas/KitchenKDS'));
+const WaiterPOS = lazy(() => import('./pages/saas/WaiterPOS'));
+const CashierDesk = lazy(() => import('./pages/saas/CashierDesk'));
+const AdminSettings = lazy(() => import('./pages/saas/AdminSettings'));
+const StaffManagement = lazy(() => import('./pages/saas/StaffManagement'));
+const FeedbackMonitor = lazy(() => import('./pages/saas/FeedbackMonitor'));
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-[400px] flex flex-col items-center justify-center p-8 text-center animate-pulse">
+      <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+      <p className="text-slate-400 text-sm font-medium">Loading Restoza Module...</p>
+    </div>
+  );
+}
 
 function MainContent() {
   const { user, activePortal, setActivePortal, isStaff } = useAuth();
@@ -61,22 +70,24 @@ function MainContent() {
     <>
       <NotificationToast />
 
-      {activePortal === 'website' ? (
-        <RestaurantWebsite
-          onOpenAuth={() => setIsAuthOpen(true)}
-          onEnterSaas={() => setActivePortal('saas')}
-          isStaff={isStaff}
-          userRole={user?.role}
-        />
-      ) : (
-        <SaasLayout
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onBackToWebsite={() => setActivePortal('website')}
-        >
-          {renderSaasTab()}
-        </SaasLayout>
-      )}
+      <Suspense fallback={<LoadingFallback />}>
+        {activePortal === 'website' ? (
+          <RestaurantWebsite
+            onOpenAuth={() => setIsAuthOpen(true)}
+            onEnterSaas={() => setActivePortal('saas')}
+            isStaff={isStaff}
+            userRole={user?.role}
+          />
+        ) : (
+          <SaasLayout
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onBackToWebsite={() => setActivePortal('website')}
+          >
+            {renderSaasTab()}
+          </SaasLayout>
+        )}
+      </Suspense>
 
       <AuthModal
         isOpen={isAuthOpen}
@@ -95,3 +106,4 @@ export default function App() {
     </AuthProvider>
   );
 }
+

@@ -5,6 +5,8 @@ const cors = require('cors');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
 
+const zlib = require('zlib');
+
 dotenv.config();
 
 const apiRoutes = require('./routes/api');
@@ -25,10 +27,36 @@ const io = new Server(server, {
 
 app.set('io', io);
 
+// Native lightweight Gzip compression middleware
+const gzipCompression = (req, res, next) => {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (!acceptEncoding.includes('gzip')) return next();
+
+  const originalJson = res.json;
+  res.json = function (data) {
+    const jsonStr = JSON.stringify(data);
+    if (jsonStr.length > 512) {
+      zlib.gzip(Buffer.from(jsonStr), (err, compressed) => {
+        if (err) return originalJson.call(res, data);
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Encoding', 'gzip');
+        res.setHeader('Vary', 'Accept-Encoding');
+        res.send(compressed);
+      });
+      return;
+    }
+    return originalJson.call(res, data);
+  };
+  next();
+};
+
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(morgan('dev'));
+app.use(gzipCompression);
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
 
 // Health Check
 app.get('/api/health', (req, res) => {

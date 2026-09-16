@@ -35,11 +35,6 @@ const requireRole = (...allowedRoles) => {
       return res.status(401).json({ message: 'Unauthorized. Authentication required.' });
     }
 
-    // SUPER_ADMIN has access to everything
-    if (req.user.role === 'SUPER_ADMIN') {
-      return next();
-    }
-
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({
         message: `Forbidden. You need one of the following roles: ${allowedRoles.join(', ')}`,

@@ -22,9 +22,14 @@ export const authAPI = {
   login: (credentials) => api.post('/auth/login', credentials),
   register: (data) => api.post('/auth/register', data),
   demoLogin: (role) => api.post('/auth/demo-login', { role }),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (data) => api.post('/auth/reset-password', data),
+  changePassword: (data) => api.post('/auth/change-password', data),
   getMe: () => api.get('/auth/me'),
   getStaff: () => api.get('/auth/staff'),
   updateStaff: (id, data) => api.patch(`/auth/staff/${id}`, data),
+  payStaff: (id, data) => api.post(`/auth/staff/${id}/pay`, data),
+  getStaffPayments: (id) => api.get(`/auth/staff/${id}/payments`),
 };
 
 export const menuAPI = {

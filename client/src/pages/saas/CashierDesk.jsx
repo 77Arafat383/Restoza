@@ -124,7 +124,7 @@ export default function CashierDesk() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-[#111117] border border-emerald-500/30">
         <div className="flex items-center gap-3">
@@ -152,10 +152,10 @@ export default function CashierDesk() {
 
       {/* Grid: Bills Queue & Settlement Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
+
         {/* Left Column: Bills & Orders Queue (6 cols) */}
         <div className="lg:col-span-6 space-y-5">
-          
+
           {/* Unbilled Active Orders that need invoice generated */}
           {unbilledOrders.length > 0 && (
             <div className="p-5 rounded-3xl bg-restoza-dark-900 border border-amber-500/30 shadow-xl space-y-3">
@@ -206,11 +206,10 @@ export default function CashierDesk() {
                   <div
                     key={bill.id}
                     onClick={() => setSelectedBill(bill)}
-                    className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                      isSelected
-                        ? 'border-emerald-500/70 bg-emerald-950/20 shadow-lg'
-                        : 'border-white/10 bg-black/30 hover:border-white/20'
-                    }`}
+                    className={`p-4 rounded-2xl border cursor-pointer transition-all ${isSelected
+                      ? 'border-emerald-500/70 bg-emerald-950/20 shadow-lg'
+                      : 'border-white/10 bg-black/30 hover:border-white/20'
+                      }`}
                   >
                     <div className="flex items-start justify-between">
                       <div>
@@ -225,9 +224,8 @@ export default function CashierDesk() {
                           {currency}{bill.total}
                         </span>
                         <span
-                          className={`block text-[10px] font-bold uppercase tracking-wider mt-0.5 ${
-                            isPaid ? 'text-emerald-400' : 'text-amber-400'
-                          }`}
+                          className={`block text-[10px] font-bold uppercase tracking-wider mt-0.5 ${isPaid ? 'text-emerald-400' : 'text-amber-400'
+                            }`}
                         >
                           {bill.status}
                         </span>
@@ -247,7 +245,7 @@ export default function CashierDesk() {
                           className="text-amber-400 hover:underline flex items-center gap-1 font-semibold"
                         >
                           <Printer className="w-3.5 h-3.5" />
-                          <span>View Thermal Receipt</span>
+                          <span>View Receipt</span>
                         </button>
                       </div>
                     )}
@@ -269,7 +267,7 @@ export default function CashierDesk() {
         <div className="lg:col-span-6 space-y-5">
           {selectedBill ? (
             <div className="p-6 rounded-3xl bg-restoza-dark-900 border border-white/10 shadow-xl space-y-5">
-              
+
               {/* Bill Details Header */}
               <div className="flex items-center justify-between pb-4 border-b border-white/10">
                 <div>
@@ -282,11 +280,10 @@ export default function CashierDesk() {
                 </div>
 
                 <span
-                  className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                    selectedBill.status === 'PAID'
-                      ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-500/40'
-                      : 'bg-amber-900/60 text-amber-300 border border-amber-500/40'
-                  }`}
+                  className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${selectedBill.status === 'PAID'
+                    ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-amber-900/60 text-amber-300 border border-amber-500/40'
+                    }`}
                 >
                   {selectedBill.status}
                 </span>
@@ -368,11 +365,10 @@ export default function CashierDesk() {
                             type="button"
                             key={m.id}
                             onClick={() => setPaymentMethod(m.id)}
-                            className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-xs transition-all ${
-                              isChosen
-                                ? 'bg-emerald-950/60 border-emerald-400 text-emerald-300 font-bold'
-                                : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-                            }`}
+                            className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-xs transition-all ${isChosen
+                              ? 'bg-emerald-950/60 border-emerald-400 text-emerald-300 font-bold'
+                              : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                              }`}
                           >
                             <Icon className="w-4 h-4" />
                             <span>{m.label}</span>
@@ -411,7 +407,7 @@ export default function CashierDesk() {
                     className="w-full py-3 px-4 rounded-xl bg-restoza-burgundy-700 hover:bg-restoza-burgundy-800 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-glow-burgundy"
                   >
                     <Printer className="w-4 h-4" />
-                    <span>Print 80mm Thermal Receipt</span>
+                    <span>Print Receipt</span>
                   </button>
                 </div>
               )}

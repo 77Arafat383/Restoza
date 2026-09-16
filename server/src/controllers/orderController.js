@@ -95,16 +95,19 @@ const createOrder = async (req, res) => {
       serviceChargeRate: 5.0,
     };
 
-    // Calculate totals based on current menu item prices in database
+    // Batch fetch all requested menu items in 1 single database call
+    const requestedIds = items.map((i) => parseInt(i.menuItemId));
+    const fetchedMenuItems = await prisma.menuItem.findMany({
+      where: { id: { in: requestedIds } },
+    });
+    const menuItemMap = new Map(fetchedMenuItems.map((m) => [m.id, m]));
+
     let subtotal = 0;
     let totalDiscount = 0;
     const orderItemsToCreate = [];
 
     for (const item of items) {
-      const menuItem = await prisma.menuItem.findUnique({
-        where: { id: parseInt(item.menuItemId) },
-      });
-
+      const menuItem = menuItemMap.get(parseInt(item.menuItemId));
       if (!menuItem) {
         return res.status(400).json({ message: `Menu item #${item.menuItemId} not found.` });
       }

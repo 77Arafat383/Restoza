@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { authAPI } from '../../services/api';
 import RestozaLogo from '../common/RestozaLogo';
-import { Lock, Mail, User, Phone, Shield, ArrowRight, X, Sparkles, ChefHat, UserCheck, DollarSign, Crown } from 'lucide-react';
+import {
+  Lock, Mail, User, Phone, Shield, ArrowRight, X, Sparkles, ChefHat,
+  UserCheck, DollarSign, Crown, KeyRound, CheckCircle2, ArrowLeft
+} from 'lucide-react';
 
 export default function AuthModal({ isOpen, onClose }) {
   const { login, register, demoLogin } = useAuth();
-  const [isRegister, setIsRegister] = useState(false);
+  const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot' | 'reset'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   // Form State
   const [email, setEmail] = useState('');
@@ -16,22 +21,56 @@ export default function AuthModal({ isOpen, onClose }) {
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState('WAITER');
 
+  // Forgot / Reset Password State
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [generatedCodeDemo, setGeneratedCodeDemo] = useState('');
+
   if (!isOpen) return null;
+
+  const handleModeSwitch = (newMode) => {
+    setMode(newMode);
+    setError('');
+    setSuccessMsg('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccessMsg('');
     setLoading(true);
 
     try {
-      if (isRegister) {
-        await register({ name, email, password, phone, role });
-      } else {
+      if (mode === 'register') {
+        const res = await authAPI.register({ name, email, password, phone, role });
+        if (res.data?.pending) {
+          setSuccessMsg(res.data.message || 'Registration submitted! Please wait until a Manager or Super Admin approves your request.');
+          setMode('login');
+          setPassword('');
+        } else {
+          onClose();
+        }
+      } else if (mode === 'login') {
         await login(email, password);
+        onClose();
+      } else if (mode === 'forgot') {
+        const res = await authAPI.forgotPassword(email);
+        setSuccessMsg(res.data.message || '6-digit verification code sent to your email.');
+        if (res.data.resetCode) {
+          setGeneratedCodeDemo(res.data.resetCode);
+          setResetCode(res.data.resetCode);
+        }
+        setMode('reset');
+      } else if (mode === 'reset') {
+        const res = await authAPI.resetPassword({ email, code: resetCode, newPassword });
+        setSuccessMsg(res.data.message || 'Password reset successful! You can now log in.');
+        setMode('login');
+        setPassword('');
+        setResetCode('');
+        setNewPassword('');
       }
-      onClose();
     } catch (err) {
-      setError(err.response?.data?.message || 'Authentication failed. Please check credentials.');
+      setError(err.response?.data?.message || 'Authentication action failed. Please check your inputs.');
     } finally {
       setLoading(false);
     }
@@ -39,6 +78,7 @@ export default function AuthModal({ isOpen, onClose }) {
 
   const handleQuickDemo = async (targetRole) => {
     setError('');
+    setSuccessMsg('');
     setLoading(true);
     try {
       await demoLogin(targetRole);
@@ -53,7 +93,7 @@ export default function AuthModal({ isOpen, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 overflow-y-auto">
       <div className="relative w-full max-w-lg bg-restoza-dark-900 border border-amber-500/30 rounded-3xl shadow-2xl overflow-hidden p-6 md:p-8 animate-in fade-in zoom-in-95 duration-200">
-        
+
         {/* Background glow effects */}
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-restoza-burgundy-600/30 rounded-full blur-3xl pointer-events-none"></div>
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none"></div>
@@ -69,91 +109,106 @@ export default function AuthModal({ isOpen, onClose }) {
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-6">
           <RestozaLogo size="lg" subtitle={false} />
-          <h2 className="text-xl font-bold text-white mt-3 flex items-center gap-2">
-            Staff Portal & SaaS Workspace
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Sign in to access your role-based restaurant operations dashboard
-          </p>
         </div>
 
-        {/* Quick Demo Switcher Card */}
-        <div className="mb-6 p-3.5 rounded-2xl bg-white/[0.03] border border-white/10">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400 mb-2.5">
-            <Sparkles className="w-3.5 h-3.5" />
-            Quick Demo Login (1-Click Instant Access):
+        {/* Quick Demo Switcher Card (Shown on Login / Register) */}
+        {(mode === 'login' || mode === 'register') && (
+          <div className="mb-6 p-3.5 rounded-2xl bg-white/[0.03] border border-white/10">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400 mb-2.5">
+              <Sparkles className="w-3.5 h-3.5" />
+              Quick Demo Login (1-Click Instant Access):
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemo('MANAGER')}
+                className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold rounded-xl bg-amber-950/60 border border-amber-500/30 text-amber-200 hover:bg-amber-900/60 hover:border-amber-400 transition-all text-left"
+              >
+                <Shield className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                <span>Manager</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemo('WAITER')}
+                className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold rounded-xl bg-blue-950/60 border border-blue-500/30 text-blue-200 hover:bg-blue-900/60 hover:border-blue-400 transition-all text-left"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                <span>Waiter</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemo('KITCHEN')}
+                className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold rounded-xl bg-rose-950/60 border border-rose-500/30 text-rose-200 hover:bg-rose-900/60 hover:border-rose-400 transition-all text-left"
+              >
+                <ChefHat className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
+                <span>Chef</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemo('CASHIER')}
+                className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-200 hover:bg-emerald-900/60 hover:border-emerald-400 transition-all text-left col-span-2 sm:col-span-1"
+              >
+                <DollarSign className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                <span>Cashier Desk</span>
+              </button>
+            </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('SUPER_ADMIN')}
-              className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold rounded-xl bg-purple-950/60 border border-purple-500/30 text-purple-200 hover:bg-purple-900/60 hover:border-purple-400 transition-all text-left"
-            >
-              <Crown className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
-              <span>Super Admin</span>
-            </button>
+        )}
 
+        {/* Mode Navigation Tabs */}
+        {(mode === 'login' || mode === 'register') && (
+          <div className="flex border-b border-white/10 mb-5">
             <button
-              type="button"
-              onClick={() => handleQuickDemo('MANAGER')}
-              className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold rounded-xl bg-amber-950/60 border border-amber-500/30 text-amber-200 hover:bg-amber-900/60 hover:border-amber-400 transition-all text-left"
+              onClick={() => handleModeSwitch('login')}
+              className={`flex-1 pb-2.5 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 ${
+                mode === 'login'
+                  ? 'border-amber-500 text-amber-400'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
             >
-              <Shield className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-              <span>Manager</span>
+              Login
             </button>
-
             <button
-              type="button"
-              onClick={() => handleQuickDemo('WAITER')}
-              className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold rounded-xl bg-blue-950/60 border border-blue-500/30 text-blue-200 hover:bg-blue-900/60 hover:border-blue-400 transition-all text-left"
+              onClick={() => handleModeSwitch('register')}
+              className={`flex-1 pb-2.5 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 ${
+                mode === 'register'
+                  ? 'border-amber-500 text-amber-400'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
             >
-              <UserCheck className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-              <span>Waiter (POS)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('KITCHEN')}
-              className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold rounded-xl bg-rose-950/60 border border-rose-500/30 text-rose-200 hover:bg-rose-900/60 hover:border-rose-400 transition-all text-left"
-            >
-              <ChefHat className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
-              <span>Kitchen (KDS)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('CASHIER')}
-              className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-200 hover:bg-emerald-900/60 hover:border-emerald-400 transition-all text-left col-span-2 sm:col-span-1"
-            >
-              <DollarSign className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-              <span>Cashier Desk</span>
+              Register
             </button>
           </div>
-        </div>
+        )}
 
-        {/* Toggle between Login and Register */}
-        <div className="flex border-b border-white/10 mb-5">
-          <button
-            onClick={() => { setIsRegister(false); setError(''); }}
-            className={`flex-1 pb-2.5 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 ${
-              !isRegister
-                ? 'border-amber-500 text-amber-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Staff Login
-          </button>
-          <button
-            onClick={() => { setIsRegister(true); setError(''); }}
-            className={`flex-1 pb-2.5 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 ${
-              isRegister
-                ? 'border-amber-500 text-amber-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Register New Staff
-          </button>
-        </div>
+        {/* Header for Forgot / Reset Password Modes */}
+        {(mode === 'forgot' || mode === 'reset') && (
+          <div className="mb-5 flex items-center justify-between pb-3 border-b border-white/10">
+            <button
+              type="button"
+              onClick={() => handleModeSwitch('login')}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-amber-400 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Login</span>
+            </button>
+            <span className="text-xs font-semibold text-amber-400">
+              {mode === 'forgot' ? 'Step 1: Request Code' : 'Step 2: Reset Password'}
+            </span>
+          </div>
+        )}
+
+        {/* Success notification */}
+        {successMsg && (
+          <div className="mb-4 p-3 rounded-xl bg-emerald-900/40 border border-emerald-500/50 text-emerald-200 text-xs flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <span>{successMsg}</span>
+          </div>
+        )}
 
         {/* Error notification */}
         {error && (
@@ -162,9 +217,10 @@ export default function AuthModal({ isOpen, onClose }) {
           </div>
         )}
 
-        {/* Form */}
+        {/* Main Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {isRegister && (
+          {/* REGISTER MODE EXTRA FIELDS */}
+          {mode === 'register' && (
             <>
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">Full Name</label>
@@ -175,7 +231,7 @@ export default function AuthModal({ isOpen, onClose }) {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. John Doe"
+                    placeholder="e.g. Monkey D Luffy"
                     className="w-full pl-9 pr-3 py-2 bg-black/40 border border-white/15 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
                   />
                 </div>
@@ -202,55 +258,127 @@ export default function AuthModal({ isOpen, onClose }) {
                   onChange={(e) => setRole(e.target.value)}
                   className="w-full px-3 py-2 bg-black/40 border border-white/15 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                 >
-                  <option value="WAITER" className="bg-slate-900 text-white">Waiter / Floor Staff</option>
-                  <option value="KITCHEN" className="bg-slate-900 text-white">Kitchen Chef</option>
+                  <option value="WAITER" className="bg-slate-900 text-white">Waiter</option>
+                  <option value="KITCHEN" className="bg-slate-900 text-white">Chef</option>
                   <option value="CASHIER" className="bg-slate-900 text-white">Cashier</option>
-                  <option value="MANAGER" className="bg-slate-900 text-white">Restaurant Manager</option>
+                  <option value="MANAGER" className="bg-slate-900 text-white">Manager</option>
                 </select>
               </div>
             </>
           )}
 
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Email Address</label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="staff@restoza.com"
-                className="w-full pl-9 pr-3 py-2 bg-black/40 border border-white/15 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
-              />
+          {/* EMAIL FIELD (LOGIN, REGISTER, FORGOT) */}
+          {mode !== 'reset' && (
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Email Address</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="staff@restoza.com"
+                  className="w-full pl-9 pr-3 py-2 bg-black/40 border border-white/15 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Password</label>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-9 pr-3 py-2 bg-black/40 border border-white/15 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
-              />
+          {/* PASSWORD FIELD (LOGIN & REGISTER) */}
+          {(mode === 'login' || mode === 'register') && (
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-medium text-slate-300">Password</label>
+                {mode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => handleModeSwitch('forgot')}
+                    className="text-xs text-amber-400 hover:text-amber-300 transition-colors hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-9 pr-3 py-2 bg-black/40 border border-white/15 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
+          {/* RESET PASSWORD MODE (CODE & NEW PASSWORD) */}
+          {mode === 'reset' && (
+            <>
+              {generatedCodeDemo && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-center justify-between">
+                  <span>Demo 6-digit code for <strong>{email}</strong>:</span>
+                  <span className="font-mono font-bold text-amber-400 tracking-widest text-sm bg-black/50 px-2 py-0.5 rounded border border-amber-500/30">
+                    {generatedCodeDemo}
+                  </span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  6-Digit Verification Code
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="123456"
+                    className="w-full pl-9 pr-3 py-2.5 bg-black/40 border border-white/15 rounded-xl text-base font-mono tracking-widest text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">Check your inbox for the 6-digit verification code.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">New Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="password"
+                    required
+                    minLength={4}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter your new password"
+                    className="w-full pl-9 pr-3 py-2 bg-black/40 border border-white/15 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* SUBMIT BUTTON */}
           <button
             type="submit"
             disabled={loading}
             className="w-full mt-2 py-2.5 px-4 bg-gradient-to-r from-restoza-burgundy-700 to-restoza-burgundy-900 hover:from-restoza-burgundy-600 hover:to-restoza-burgundy-800 text-white font-semibold rounded-xl text-sm shadow-glow-burgundy flex items-center justify-center gap-2 transition-all disabled:opacity-50"
           >
             {loading ? (
-              <span>Authenticating...</span>
+              <span>Processing...</span>
             ) : (
               <>
-                <span>{isRegister ? 'Complete Staff Registration' : 'Sign In to Workspace'}</span>
+                <span>
+                  {mode === 'login' && 'Sign In to Workspace'}
+                  {mode === 'register' && 'Complete Staff Registration'}
+                  {mode === 'forgot' && 'Send 6-Digit Code'}
+                  {mode === 'reset' && 'Confirm New Password'}
+                </span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}

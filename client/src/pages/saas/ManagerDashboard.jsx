@@ -22,16 +22,23 @@ export default function ManagerDashboard({ onNavigateTab }) {
     fetchDashboardData();
   }, []);
 
-  // Listen to socket events for live metric refresh
+  // Listen to socket events for live metric refresh with debouncing
   useEffect(() => {
     if (!socket) return;
-    const handleRefresh = () => fetchDashboardData();
+    let timer = null;
+    const handleRefresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        fetchDashboardData();
+      }, 300);
+    };
     socket.on('new_order', handleRefresh);
     socket.on('order_status_updated', handleRefresh);
     socket.on('payment_completed', handleRefresh);
     socket.on('table_status_changed', handleRefresh);
 
     return () => {
+      if (timer) clearTimeout(timer);
       socket.off('new_order', handleRefresh);
       socket.off('order_status_updated', handleRefresh);
       socket.off('payment_completed', handleRefresh);

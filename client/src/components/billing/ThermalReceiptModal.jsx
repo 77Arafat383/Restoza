@@ -5,16 +5,115 @@ export default function ThermalReceiptModal({ receipt, onClose }) {
   if (!receipt) return null;
 
   const handlePrint = () => {
-    window.print();
+    const printContent = document.getElementById('thermal-receipt');
+    if (!printContent) return;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0px';
+    iframe.style.height = '0px';
+    iframe.style.border = 'none';
+    iframe.style.zIndex = '-9999';
+    document.body.appendChild(iframe);
+
+    const pri = iframe.contentWindow;
+    pri.document.open();
+    pri.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Receipt - ${receipt.billNumber || 'RESTOZA'}</title>
+          <style>
+            @page {
+              size: auto;
+              margin: 10mm;
+            }
+            * {
+              box-sizing: border-box;
+            }
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: #ffffff;
+              color: #000000;
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 11px;
+              line-height: 1.3;
+              width: 100%;
+              display: flex;
+              justify-content: center;
+              align-items: flex-start;
+            }
+            .receipt-paper {
+              width: 85mm;
+              max-width: 100%;
+              margin: 0 auto;
+              padding: 8px 12px;
+              background: #ffffff;
+            }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .text-left { text-align: left; }
+            .font-bold { font-weight: bold; }
+            .font-semibold { font-weight: 600; }
+            .font-medium { font-weight: 500; }
+            .uppercase { text-transform: uppercase; }
+            .italic { font-style: italic; }
+            .flex { display: flex; }
+            .justify-between { justify-content: space-between; }
+            .justify-center { justify-content: center; }
+            .items-center { align-items: center; }
+            .border-b { border-bottom: 1px dashed #444; }
+            .border-t { border-top: 1px dashed #444; }
+            .py-1 { padding-top: 3px; padding-bottom: 3px; }
+            .py-3 { padding-top: 8px; padding-bottom: 8px; }
+            .pb-4 { padding-bottom: 12px; }
+            .pt-1 { padding-top: 4px; }
+            .pt-2 { padding-top: 8px; }
+            .pt-4 { padding-top: 12px; }
+            .space-y-1 > * + * { margin-top: 4px; }
+            .space-y-1\\.5 > * + * { margin-top: 6px; }
+            .space-y-2 > * + * { margin-top: 8px; }
+            .w-full { width: 100%; }
+            .w-1\\/2 { width: 50%; }
+            .w-1\\/6 { width: 16.666%; }
+            .text-xs { font-size: 11px; }
+            .text-sm { font-size: 12px; }
+            .text-base { font-size: 14px; font-weight: bold; }
+            .text-xl { font-size: 18px; font-weight: bold; }
+            .no-print { display: none !important; }
+            .barcode-container { display: flex; justify-content: center; gap: 2px; height: 36px; padding: 4px 0; }
+            .barcode-bar { background: #000; height: 100%; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-paper">
+            ${printContent.innerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+    pri.document.close();
+    pri.focus();
+    setTimeout(() => {
+      pri.print();
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 1000);
+    }, 250);
   };
 
   const currency = receipt.currency || '৳';
   const rest = receipt.restaurant || {};
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-md bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
-        
+    <div className="thermal-receipt-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="thermal-receipt-modal-card relative w-full max-w-md bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+
         {/* Header Actions */}
         <div className="bg-slate-100 px-6 py-3 border-b flex items-center justify-between no-print">
           <div className="flex items-center gap-2 text-emerald-700 text-sm font-semibold">
@@ -195,7 +294,7 @@ export default function ThermalReceiptModal({ receipt, onClose }) {
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-restoza-burgundy-700 hover:bg-restoza-burgundy-800 text-white rounded-lg transition-colors shadow"
           >
             <Printer className="w-4 h-4" />
-            Print Thermal Receipt
+            Print
           </button>
         </div>
 
