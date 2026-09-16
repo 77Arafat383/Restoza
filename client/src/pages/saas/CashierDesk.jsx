@@ -14,6 +14,7 @@ export default function CashierDesk() {
   const [settings, setSettings] = useState({ currencySymbol: '৳', taxRate: 10, serviceChargeRate: 5 });
   const [selectedBill, setSelectedBill] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [onlineProvider, setOnlineProvider] = useState('bKash');
   const [transactionId, setTransactionId] = useState('');
   const [loading, setLoading] = useState(true);
   const [settling, setSettling] = useState(false);
@@ -33,30 +34,23 @@ export default function CashierDesk() {
     const handleRefresh = () => fetchCashierData();
     socket.on('bill_generated', handleRefresh);
     socket.on('payment_completed', handleRefresh);
-    socket.on('new_order', handleRefresh);
-    socket.on('order_status_updated', handleRefresh);
 
     return () => {
       socket.off('bill_generated', handleRefresh);
       socket.off('payment_completed', handleRefresh);
-      socket.off('new_order', handleRefresh);
-      socket.off('order_status_updated', handleRefresh);
     };
   }, [socket]);
 
   const fetchCashierData = async () => {
     try {
-      const [billsRes, ordersRes, settingsRes] = await Promise.all([
+      const [billsRes, unbilledRes, settingsRes] = await Promise.all([
         billAPI.getBills(),
-        orderAPI.getOrders({ status: 'SERVED,READY' }),
+        orderAPI.getUnbilledOrders(),
         settingsAPI.getSettings(),
       ]);
 
       setBills(billsRes.data);
-      // Find orders that don't have a bill generated yet
-      const unbilled = ordersRes.data.filter((o) => !o.bills || o.bills.length === 0);
-      setUnbilledOrders(unbilled);
-
+      setUnbilledOrders(unbilledRes.data);
       if (settingsRes.data) setSettings(settingsRes.data);
       if (!selectedBill && billsRes.data.length > 0) {
         setSelectedBill(billsRes.data[0]);
@@ -84,9 +78,14 @@ export default function CashierDesk() {
 
     setSettling(true);
     try {
+      const finalMethod = paymentMethod === 'ONLINE' ? `ONLINE (${onlineProvider})` : paymentMethod;
+      const refId = transactionId
+        ? transactionId
+        : `${paymentMethod === 'ONLINE' ? onlineProvider : paymentMethod}-TXN-${Date.now().toString().slice(-6)}`;
+
       await billAPI.processPayment(selectedBill.id, {
-        paymentMethod,
-        transactionId: transactionId || `TXN-${Date.now().toString().slice(-6)}`,
+        paymentMethod: finalMethod,
+        transactionId: refId,
       });
 
       // Fetch thermal receipt data immediately
@@ -351,12 +350,11 @@ export default function CashierDesk() {
                 <form onSubmit={handleProcessPayment} className="space-y-4 pt-2">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-medium text-slate-300">Choose Payment Method</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       {[
                         { id: 'CASH', label: 'Cash', icon: Banknote },
-                        { id: 'CARD', label: 'Card / POS', icon: CreditCard },
-                        { id: 'MOBILE_BANKING', label: 'bKash/Nagad', icon: Smartphone },
-                        { id: 'ONLINE', label: 'Online', icon: DollarSign },
+                        { id: 'CARD', label: 'Card', icon: CreditCard },
+                        { id: 'ONLINE', label: 'Online Payment', icon: Smartphone },
                       ].map((m) => {
                         const Icon = m.icon;
                         const isChosen = paymentMethod === m.id;
@@ -366,7 +364,7 @@ export default function CashierDesk() {
                             key={m.id}
                             onClick={() => setPaymentMethod(m.id)}
                             className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-xs transition-all ${isChosen
-                              ? 'bg-emerald-950/60 border-emerald-400 text-emerald-300 font-bold'
+                              ? 'bg-emerald-950/60 border-emerald-400 text-emerald-300 font-bold shadow-md'
                               : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
                               }`}
                           >
@@ -378,14 +376,49 @@ export default function CashierDesk() {
                     </div>
                   </div>
 
+                  {/* Sub-options for Online Payment (5 Mobile Banking Gateways) */}
+                  {paymentMethod === 'ONLINE' && (
+                    <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-emerald-500/20 space-y-2.5 animate-in fade-in">
+                      <label className="block text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">
+                        Select Mobile Banking / Online Gateway
+                      </label>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {[
+                          { id: 'bKash', label: 'bKash', color: 'border-pink-500/50 bg-pink-950/40 text-pink-300' },
+                          { id: 'Nagad', label: 'Nagad', color: 'border-orange-500/50 bg-orange-950/40 text-orange-300' },
+                          { id: 'Rocket', label: 'Rocket', color: 'border-purple-500/50 bg-purple-950/40 text-purple-300' },
+                          { id: 'Upay', label: 'Upay', color: 'border-blue-500/50 bg-blue-950/40 text-blue-300' },
+                          { id: 'CellFin', label: 'CellFin', color: 'border-emerald-500/50 bg-emerald-950/40 text-emerald-300' },
+                        ].map((provider) => {
+                          const isSelected = onlineProvider === provider.id;
+                          return (
+                            <button
+                              type="button"
+                              key={provider.id}
+                              onClick={() => setOnlineProvider(provider.id)}
+                              className={`py-2 px-1 rounded-xl border text-[11px] font-bold text-center transition-all ${isSelected
+                                ? `${provider.color} ring-2 ring-emerald-400`
+                                : 'border-white/10 bg-black/40 text-slate-400 hover:text-white'
+                                }`}
+                            >
+                              {provider.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {paymentMethod !== 'CASH' && (
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">Transaction Ref / Slip #</label>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">
+                        {paymentMethod === 'ONLINE' ? `${onlineProvider} Transaction ID / Ref` : 'Card Slip # / Ref'}
+                      </label>
                       <input
                         type="text"
                         value={transactionId}
                         onChange={(e) => setTransactionId(e.target.value)}
-                        placeholder="e.g. TXN-8947261"
+                        placeholder={paymentMethod === 'ONLINE' ? `e.g. ${onlineProvider} Trx ID` : 'e.g. SLIP-8947261'}
                         className="w-full px-3 py-2 bg-black/40 border border-white/15 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
                       />
                     </div>

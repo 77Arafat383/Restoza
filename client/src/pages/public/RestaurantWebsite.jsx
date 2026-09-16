@@ -260,7 +260,7 @@ export default function RestaurantWebsite({ onOpenAuth, onEnterSaas, isStaff, us
                 className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-slate-950 font-bold shadow-glow-gold transition-all"
               >
                 <ShieldCheck className="w-4 h-4" />
-                <span>Open Operations SaaS ({userRole})</span>
+                <span>{userRole}</span>
               </button>
             ) : (
               <button
