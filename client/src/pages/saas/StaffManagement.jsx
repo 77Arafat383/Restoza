@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { authAPI } from '../../services/api';
+import { authAPI, ingredientAPI } from '../../services/api';
+import { useSocket } from '../../context/SocketContext';
 import {
   Users, UserPlus, Shield, CheckCircle2, XCircle, Mail, Phone, Lock, X,
-  UserCheck, Flame, DollarSign, Clock, CreditCard, ChevronRight, AlertCircle, Edit3, Save
+  UserCheck, Flame, DollarSign, Clock, CreditCard, ChevronRight, AlertCircle, Edit3, Save,
+  Search, ChefHat, Check, PackageCheck, Trash2, Filter
 } from 'lucide-react';
 
 export default function StaffManagement() {
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'PENDING' | 'ACTIVE' | 'FIRED'
+  const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'PENDING' | 'ACTIVE' | 'FIRED' | 'ACCEPTED_INGREDIENTS'
+  const [searchTerm, setSearchTerm] = useState('');
+  const [ingredientRequests, setIngredientRequests] = useState([]);
+  const [ingredientSearchTerm, setIngredientSearchTerm] = useState('');
 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,9 +40,39 @@ export default function StaffManagement() {
     note: '',
   });
 
+  const { socket } = useSocket();
+
   useEffect(() => {
     fetchStaff();
+    fetchIngredientRequests();
   }, []);
+
+  // Listen to socket events for ingredient requests live updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleReqCreated = (newReq) => {
+      setIngredientRequests((prev) => [newReq, ...prev.filter((r) => r.id !== newReq.id)]);
+    };
+
+    const handleReqUpdated = (updatedReq) => {
+      setIngredientRequests((prev) => prev.map((r) => (r.id === updatedReq.id ? updatedReq : r)));
+    };
+
+    const handleReqDeleted = (id) => {
+      setIngredientRequests((prev) => prev.filter((r) => r.id !== parseInt(id)));
+    };
+
+    socket.on('ingredient_request_created', handleReqCreated);
+    socket.on('ingredient_request_updated', handleReqUpdated);
+    socket.on('ingredient_request_deleted', handleReqDeleted);
+
+    return () => {
+      socket.off('ingredient_request_created', handleReqCreated);
+      socket.off('ingredient_request_updated', handleReqUpdated);
+      socket.off('ingredient_request_deleted', handleReqDeleted);
+    };
+  }, [socket]);
 
   const fetchStaff = async () => {
     try {
@@ -47,6 +82,33 @@ export default function StaffManagement() {
       console.error('Failed to load staff:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchIngredientRequests = async () => {
+    try {
+      const res = await ingredientAPI.getRequests();
+      setIngredientRequests(res.data);
+    } catch (err) {
+      console.error('Failed to load ingredient requests:', err);
+    }
+  };
+
+  const handleUpdateIngredientStatus = async (id, newStatus) => {
+    try {
+      const res = await ingredientAPI.updateStatus(id, newStatus);
+      setIngredientRequests((prev) => prev.map((r) => (r.id === id ? res.data : r)));
+    } catch (err) {
+      console.error('Failed to update status:', err);
+    }
+  };
+
+  const handleDeleteIngredientRequest = async (id) => {
+    try {
+      await ingredientAPI.deleteRequest(id);
+      setIngredientRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      console.error('Failed to delete request:', err);
     }
   };
 
@@ -178,60 +240,264 @@ export default function StaffManagement() {
         </button>
       </div>
 
-      {/* Tabs & Status Filter */}
-      <div className="flex items-center gap-2 border-b border-white/10 pb-3 overflow-x-auto no-scrollbar">
-        <button
-          onClick={() => setActiveTab('ALL')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-            activeTab === 'ALL'
-              ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
-              : 'bg-white/5 text-slate-300 hover:bg-white/10'
-          }`}
-        >
-          All Members ({staffList.length})
-        </button>
+      {/* Tabs & Search Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-3">
+        {/* Status Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setActiveTab('ALL')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'ALL'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
+                : 'bg-white/5 text-slate-300 hover:bg-white/10'
+            }`}
+          >
+            All Members ({staffList.length})
+          </button>
 
-        <button
-          onClick={() => setActiveTab('PENDING')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-            activeTab === 'PENDING'
-              ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
-              : 'bg-white/5 text-slate-300 hover:bg-white/10'
-          }`}
-        >
-          <span>Pending Approvals</span>
-          {pendingCount > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-400 text-slate-950 font-bold animate-pulse">
-              {pendingCount}
-            </span>
-          )}
-        </button>
+          <button
+            onClick={() => setActiveTab('PENDING')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              activeTab === 'PENDING'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
+                : 'bg-white/5 text-slate-300 hover:bg-white/10'
+            }`}
+          >
+            <span>Pending Approvals</span>
+            {pendingCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-400 text-slate-950 font-bold animate-pulse">
+                {pendingCount}
+              </span>
+            )}
+          </button>
 
-        <button
-          onClick={() => setActiveTab('ACTIVE')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-            activeTab === 'ACTIVE'
-              ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
-              : 'bg-white/5 text-slate-300 hover:bg-white/10'
-          }`}
-        >
-          Active Staff ({activeCount})
-        </button>
+          <button
+            onClick={() => setActiveTab('ACTIVE')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'ACTIVE'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
+                : 'bg-white/5 text-slate-300 hover:bg-white/10'
+            }`}
+          >
+            Active Staff ({activeCount})
+          </button>
 
-        <button
-          onClick={() => setActiveTab('FIRED')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-            activeTab === 'FIRED'
-              ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
-              : 'bg-white/5 text-slate-300 hover:bg-white/10'
-          }`}
-        >
-          Terminated / Fired ({firedCount})
-        </button>
+          <button
+            onClick={() => setActiveTab('FIRED')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'FIRED'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
+                : 'bg-white/5 text-slate-300 hover:bg-white/10'
+            }`}
+          >
+            Terminated / Fired ({firedCount})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ACCEPTED_INGREDIENTS')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              activeTab === 'ACCEPTED_INGREDIENTS'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-glow-gold'
+                : 'bg-white/5 text-slate-300 hover:bg-white/10'
+            }`}
+          >
+            <ChefHat className="w-3.5 h-3.5 text-amber-400" />
+            <span>Accepted Ingredient Requests ({ingredientRequests.filter((r) => r.status === 'APPROVED' || r.status === 'PURCHASED').length})</span>
+            {ingredientRequests.filter((r) => r.status === 'PENDING').length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-400 text-slate-950 font-bold animate-pulse">
+                {ingredientRequests.filter((r) => r.status === 'PENDING').length} pending
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Search Input Bar */}
+        <div className="relative w-full md:w-72">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={activeTab === 'ACCEPTED_INGREDIENTS' ? ingredientSearchTerm : searchTerm}
+            onChange={(e) =>
+              activeTab === 'ACCEPTED_INGREDIENTS'
+                ? setIngredientSearchTerm(e.target.value)
+                : setSearchTerm(e.target.value)
+            }
+            placeholder={
+              activeTab === 'ACCEPTED_INGREDIENTS'
+                ? 'Search requests by ingredient, chef, notes...'
+                : 'Search staff by name, email, phone, role...'
+            }
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-black/40 border border-white/15 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-500"
+          />
+        </div>
       </div>
 
-      {/* Staff Table Card */}
-      <div className="p-5 rounded-3xl bg-restoza-dark-900 border border-white/10 shadow-xl overflow-x-auto">
+      {activeTab === 'ACCEPTED_INGREDIENTS' ? (
+        /* Accepted & Managed Kitchen Ingredient Shopping Requests View */
+        <div className="p-5 rounded-3xl bg-restoza-dark-900 border border-white/10 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-3">
+            <div>
+              <h3 className="text-base font-serif font-bold text-white flex items-center gap-2">
+                <ChefHat className="w-5 h-5 text-amber-400" />
+                Kitchen Shopping Requests Log (User Management Terminal)
+              </h3>
+              <p className="text-xs text-slate-400">
+                Track all accepted, approved, purchased, and pending ingredient requests submitted by Executive Chef
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-white/10 text-slate-400 pb-2">
+                  <th className="py-3 px-4">INGREDIENTS LIST</th>
+                  <th className="py-3 px-4">REQUESTED BY</th>
+                  <th className="py-3 px-4">SPECIAL NOTES</th>
+                  <th className="py-3 px-4">STATUS</th>
+                  <th className="py-3 px-4 text-right">MANAGER ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-slate-300">
+                {ingredientRequests
+                  .filter((req) => {
+                    if (!ingredientSearchTerm.trim()) return true;
+                    const query = ingredientSearchTerm.toLowerCase();
+                    const reqItems = Array.isArray(req.items) ? req.items : [];
+                    const itemNames = reqItems.map((i) => i.name?.toLowerCase()).join(' ');
+                    return (
+                      itemNames.includes(query) ||
+                      req.ingredient?.toLowerCase().includes(query) ||
+                      req.requestedBy?.toLowerCase().includes(query) ||
+                      req.notes?.toLowerCase().includes(query) ||
+                      req.status?.toLowerCase().includes(query)
+                    );
+                  })
+                  .map((req) => {
+                    const reqItems = Array.isArray(req.items) && req.items.length > 0
+                      ? req.items
+                      : [{ name: req.ingredient || 'Ingredient', quantity: req.quantity || '' }];
+
+                    const statusStyles = {
+                      PENDING: 'bg-amber-900/50 text-amber-300 border-amber-500/40',
+                      APPROVED: 'bg-blue-900/50 text-blue-300 border-blue-500/40',
+                      PURCHASED: 'bg-emerald-900/50 text-emerald-300 border-emerald-500/40',
+                      REJECTED: 'bg-red-900/50 text-red-300 border-red-500/40',
+                    };
+
+                    return (
+                      <tr key={req.id} className="hover:bg-white/[0.02] transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="space-y-1">
+                            {reqItems.map((it, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                <span className="font-bold text-white">{it.name}</span>
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                  {it.quantity}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-4 font-semibold text-white">
+                          <div>{req.requestedBy || 'Executive Chef'}</div>
+                          <div className="text-[10px] text-slate-400 font-normal">
+                            {new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(req.createdAt).toLocaleDateString()}
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-slate-300 italic max-w-xs truncate">
+                          {req.notes ? `"${req.notes}"` : <span className="text-slate-500 not-italic">No notes</span>}
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                              statusStyles[req.status] || statusStyles.PENDING
+                            }`}
+                          >
+                            {req.status}
+                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {req.status === 'PENDING' && (
+                              <>
+                                <button
+                                  onClick={() => handleUpdateIngredientStatus(req.id, 'APPROVED')}
+                                  className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1 transition-colors"
+                                  title="Approve Request"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Accept / Approve</span>
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateIngredientStatus(req.id, 'REJECTED')}
+                                  className="p-1 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-colors"
+                                  title="Reject Request"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+
+                            {req.status === 'APPROVED' && (
+                              <>
+                                <button
+                                  onClick={() => handleUpdateIngredientStatus(req.id, 'PURCHASED')}
+                                  className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1 transition-colors"
+                                  title="Mark as Purchased"
+                                >
+                                  <PackageCheck className="w-3.5 h-3.5" />
+                                  <span>Mark Purchased</span>
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateIngredientStatus(req.id, 'REJECTED')}
+                                  className="p-1 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-colors"
+                                  title="Reject Request"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+
+                            {req.status === 'PURCHASED' && (
+                              <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Completed
+                              </span>
+                            )}
+
+                            {req.status === 'REJECTED' && (
+                              <button
+                                onClick={() => handleUpdateIngredientStatus(req.id, 'PENDING')}
+                                className="px-2 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs transition-colors"
+                              >
+                                Reopen
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => handleDeleteIngredientRequest(req.id)}
+                              className="p-1 text-slate-500 hover:text-red-400 transition-colors ml-1"
+                              title="Delete Log"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Staff Members Table Card */
+        <div className="p-5 rounded-3xl bg-restoza-dark-900 border border-white/10 shadow-xl overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="border-b border-white/10 text-slate-400 pb-2">
@@ -392,6 +658,7 @@ export default function StaffManagement() {
           </tbody>
         </table>
       </div>
+      )}
 
       {/* Give Salary Payout Modal */}
       {payModalStaff && (

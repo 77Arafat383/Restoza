@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { analyticsAPI, tableAPI, orderAPI, settingsAPI } from '../../services/api';
+import { analyticsAPI, tableAPI, orderAPI, settingsAPI, ingredientAPI } from '../../services/api';
 import { useSocket } from '../../context/SocketContext';
 import {
   DollarSign, ShoppingBag, Users, Clock, ArrowUpRight,
-  TrendingUp, Utensils, AlertCircle, CheckCircle2, ChevronRight
+  TrendingUp, Utensils, AlertCircle, CheckCircle2, ChevronRight,
+  Check, X, PackageCheck, Trash2, AlertTriangle, ChefHat, Filter, Search
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
@@ -13,6 +14,9 @@ export default function ManagerDashboard({ onNavigateTab }) {
   const [metrics, setMetrics] = useState(null);
   const [tables, setTables] = useState([]);
   const [recentOrders, setRecentOrders] = useState([]);
+  const [ingredientRequests, setIngredientRequests] = useState([]);
+  const [reqFilter, setReqFilter] = useState('ALL');
+  const [reqSearchTerm, setReqSearchTerm] = useState('');
   const [settings, setSettings] = useState({ currencySymbol: '৳' });
   const [loading, setLoading] = useState(true);
 
@@ -22,7 +26,7 @@ export default function ManagerDashboard({ onNavigateTab }) {
     fetchDashboardData();
   }, []);
 
-  // Listen to socket events for live metric refresh with debouncing
+  // Listen to socket events for live metric refresh and ingredient requests
   useEffect(() => {
     if (!socket) return;
     let timer = null;
@@ -32,10 +36,26 @@ export default function ManagerDashboard({ onNavigateTab }) {
         fetchDashboardData();
       }, 300);
     };
+
+    const handleReqCreated = (newReq) => {
+      setIngredientRequests((prev) => [newReq, ...prev.filter((r) => r.id !== newReq.id)]);
+    };
+
+    const handleReqUpdated = (updatedReq) => {
+      setIngredientRequests((prev) => prev.map((r) => (r.id === updatedReq.id ? updatedReq : r)));
+    };
+
+    const handleReqDeleted = (id) => {
+      setIngredientRequests((prev) => prev.filter((r) => r.id !== parseInt(id)));
+    };
+
     socket.on('new_order', handleRefresh);
     socket.on('order_status_updated', handleRefresh);
     socket.on('payment_completed', handleRefresh);
     socket.on('table_status_changed', handleRefresh);
+    socket.on('ingredient_request_created', handleReqCreated);
+    socket.on('ingredient_request_updated', handleReqUpdated);
+    socket.on('ingredient_request_deleted', handleReqDeleted);
 
     return () => {
       if (timer) clearTimeout(timer);
@@ -43,26 +63,49 @@ export default function ManagerDashboard({ onNavigateTab }) {
       socket.off('order_status_updated', handleRefresh);
       socket.off('payment_completed', handleRefresh);
       socket.off('table_status_changed', handleRefresh);
+      socket.off('ingredient_request_created', handleReqCreated);
+      socket.off('ingredient_request_updated', handleReqUpdated);
+      socket.off('ingredient_request_deleted', handleReqDeleted);
     };
   }, [socket]);
 
   const fetchDashboardData = async () => {
     try {
-      const [metricsRes, tablesRes, ordersRes, settingsRes] = await Promise.all([
+      const [metricsRes, tablesRes, ordersRes, settingsRes, ingRes] = await Promise.all([
         analyticsAPI.getDashboardMetrics(),
         tableAPI.getTables(),
         orderAPI.getOrders({ todayOnly: 'true' }),
         settingsAPI.getSettings(),
+        ingredientAPI.getRequests(),
       ]);
 
       setMetrics(metricsRes.data);
       setTables(tablesRes.data);
       setRecentOrders(ordersRes.data.slice(0, 6));
       if (settingsRes.data) setSettings(settingsRes.data);
+      if (ingRes.data) setIngredientRequests(ingRes.data);
     } catch (err) {
       console.error('Failed to load dashboard metrics:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdateIngredientStatus = async (id, newStatus) => {
+    try {
+      const res = await ingredientAPI.updateStatus(id, newStatus);
+      setIngredientRequests((prev) => prev.map((r) => (r.id === id ? res.data : r)));
+    } catch (err) {
+      console.error('Failed to update status:', err);
+    }
+  };
+
+  const handleDeleteIngredientRequest = async (id) => {
+    try {
+      await ingredientAPI.deleteRequest(id);
+      setIngredientRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      console.error('Failed to delete request:', err);
     }
   };
 
@@ -400,6 +443,235 @@ export default function ManagerDashboard({ onNavigateTab }) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Kitchen Ingredient Shopping Requests Management Section */}
+      <div className="p-6 rounded-3xl bg-restoza-dark-900 border border-white/10 shadow-xl space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-base font-serif font-bold text-white flex items-center gap-2">
+              <ChefHat className="w-5 h-5 text-amber-400" />
+              Kitchen Shopping Requests
+              {ingredientRequests.filter((r) => r.status === 'PENDING').length > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-slate-950 animate-pulse">
+                  {ingredientRequests.filter((r) => r.status === 'PENDING').length} Pending
+                </span>
+              )}
+            </h3>
+            <p className="text-xs text-slate-400">
+              Review, approve, or mark purchased ingredient requests submitted by Executive Chef
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Search Bar */}
+            <div className="relative w-full sm:w-56">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={reqSearchTerm}
+                onChange={(e) => setReqSearchTerm(e.target.value)}
+                placeholder="Search by ingredient, chef..."
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-black/40 border border-white/15 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/40 border border-white/10 text-xs overflow-x-auto">
+              {['ALL', 'PENDING', 'APPROVED', 'PURCHASED', 'REJECTED'].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setReqFilter(st)}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all whitespace-nowrap ${
+                    reqFilter === st
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {st}
+                  {st === 'PENDING' && ingredientRequests.filter((r) => r.status === 'PENDING').length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500/30 text-amber-300 text-[10px]">
+                      {ingredientRequests.filter((r) => r.status === 'PENDING').length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Requests List */}
+        {ingredientRequests.filter((r) => {
+          const matchesStatus = reqFilter === 'ALL' || r.status === reqFilter;
+          if (!matchesStatus) return false;
+          if (!reqSearchTerm.trim()) return true;
+          const query = reqSearchTerm.toLowerCase();
+          const reqItems = Array.isArray(r.items) ? r.items : [];
+          const itemNames = reqItems.map((i) => i.name?.toLowerCase()).join(' ');
+          return (
+            itemNames.includes(query) ||
+            r.ingredient?.toLowerCase().includes(query) ||
+            r.requestedBy?.toLowerCase().includes(query) ||
+            r.notes?.toLowerCase().includes(query)
+          );
+        }).length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {ingredientRequests
+              .filter((r) => {
+                const matchesStatus = reqFilter === 'ALL' || r.status === reqFilter;
+                if (!matchesStatus) return false;
+                if (!reqSearchTerm.trim()) return true;
+                const query = reqSearchTerm.toLowerCase();
+                const reqItems = Array.isArray(r.items) ? r.items : [];
+                const itemNames = reqItems.map((i) => i.name?.toLowerCase()).join(' ');
+                return (
+                  itemNames.includes(query) ||
+                  r.ingredient?.toLowerCase().includes(query) ||
+                  r.requestedBy?.toLowerCase().includes(query) ||
+                  r.notes?.toLowerCase().includes(query)
+                );
+              })
+              .map((req) => {
+                const statusStyles = {
+                  PENDING: 'bg-amber-900/50 text-amber-300 border-amber-500/40',
+                  APPROVED: 'bg-blue-900/50 text-blue-300 border-blue-500/40',
+                  PURCHASED: 'bg-emerald-900/50 text-emerald-300 border-emerald-500/40',
+                  REJECTED: 'bg-red-900/50 text-red-300 border-red-500/40',
+                };
+
+                const reqItems = Array.isArray(req.items) && req.items.length > 0
+                  ? req.items
+                  : [{ name: req.ingredient || 'Ingredient', quantity: req.quantity || '' }];
+
+                return (
+                  <div
+                    key={req.id}
+                    className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col justify-between space-y-4 hover:border-amber-500/30 transition-all"
+                  >
+                    <div>
+                      {/* Item List Header */}
+                      <div className="mb-3 border-b border-white/5 pb-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                          Requested Shopping List ({reqItems.length} item{reqItems.length > 1 ? 's' : ''})
+                        </span>
+                        <div className="space-y-1.5">
+                          {reqItems.map((it, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-white flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                {it.name}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                {it.quantity}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {req.notes && (
+                        <p className="text-xs text-slate-300 bg-black/30 p-2 rounded-xl border border-white/5 italic">
+                          "{req.notes}"
+                        </p>
+                      )}
+
+                      <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Req by: <strong className="text-slate-200">{req.requestedBy || 'Chef'}</strong></span>
+                        <span>{new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    </div>
+
+                    {/* Status & Actions Footer */}
+                    <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-2">
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                          statusStyles[req.status] || statusStyles.PENDING
+                        }`}
+                      >
+                        {req.status}
+                      </span>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-1.5">
+                        {req.status === 'PENDING' && (
+                          <>
+                            <button
+                              onClick={() => handleUpdateIngredientStatus(req.id, 'APPROVED')}
+                              className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1 transition-colors"
+                              title="Approve Request"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Approve</span>
+                            </button>
+                            <button
+                              onClick={() => handleUpdateIngredientStatus(req.id, 'REJECTED')}
+                              className="p-1 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-colors"
+                              title="Reject Request"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+
+                        {req.status === 'APPROVED' && (
+                          <>
+                            <button
+                              onClick={() => handleUpdateIngredientStatus(req.id, 'PURCHASED')}
+                              className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1 transition-colors"
+                              title="Mark as Purchased"
+                            >
+                              <PackageCheck className="w-3.5 h-3.5" />
+                              <span>Purchased</span>
+                            </button>
+                            <button
+                              onClick={() => handleUpdateIngredientStatus(req.id, 'REJECTED')}
+                              className="p-1 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-colors"
+                              title="Reject Request"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+
+                        {req.status === 'PURCHASED' && (
+                          <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Complete
+                          </span>
+                        )}
+
+                        {req.status === 'REJECTED' && (
+                          <button
+                            onClick={() => handleUpdateIngredientStatus(req.id, 'PENDING')}
+                            className="px-2 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs transition-colors"
+                          >
+                            Reopen
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => handleDeleteIngredientRequest(req.id)}
+                          className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+                          title="Delete Request"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        ) : (
+          <div className="py-12 text-center text-slate-500 border border-dashed border-white/10 rounded-2xl">
+            <ChefHat className="w-8 h-8 mx-auto mb-2 opacity-40 text-amber-400" />
+            <p className="text-sm font-semibold text-slate-400">No ingredient requests found</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {reqFilter === 'ALL'
+                ? 'Executive Chef has not submitted any shopping requests yet.'
+                : `No requests with status "${reqFilter}".`}
+            </p>
+          </div>
+        )}
       </div>
 
     </div>

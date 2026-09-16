@@ -82,4 +82,11 @@ export const analyticsAPI = {
   getDashboardMetrics: () => api.get('/analytics/dashboard'),
 };
 
+export const ingredientAPI = {
+  getRequests: (params) => api.get('/ingredients', { params }),
+  createRequest: (data) => api.post('/ingredients', data),
+  updateStatus: (id, status) => api.patch(`/ingredients/${id}/status`, { status }),
+  deleteRequest: (id) => api.delete(`/ingredients/${id}`),
+};
+
 export default api;

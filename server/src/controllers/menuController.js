@@ -51,10 +51,22 @@ const updateCategory = async (req, res) => {
 const deleteCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    await prisma.menuCategory.delete({ where: { id: parseInt(id) } });
+    const catId = parseInt(id);
+
+    // Delete dependent OrderItems and MenuItems for clean cascade
+    const items = await prisma.menuItem.findMany({ where: { categoryId: catId } });
+    const itemIds = items.map((i) => i.id);
+
+    if (itemIds.length > 0) {
+      await prisma.orderItem.deleteMany({ where: { menuItemId: { in: itemIds } } });
+      await prisma.menuItem.deleteMany({ where: { categoryId: catId } });
+    }
+
+    await prisma.menuCategory.delete({ where: { id: catId } });
     return res.json({ message: 'Category deleted successfully.' });
   } catch (error) {
-    return res.status(500).json({ message: 'Failed to delete category.' });
+    console.error('deleteCategory error:', error);
+    return res.status(500).json({ message: error.message || 'Failed to delete category.' });
   }
 };
 
@@ -189,10 +201,21 @@ const toggleAvailability = async (req, res) => {
 const deleteMenuItem = async (req, res) => {
   try {
     const { id } = req.params;
-    await prisma.menuItem.delete({ where: { id: parseInt(id) } });
+    const itemId = parseInt(id);
+
+    // Delete dependent OrderItems to prevent foreign key constraint violations
+    await prisma.orderItem.deleteMany({
+      where: { menuItemId: itemId },
+    });
+
+    await prisma.menuItem.delete({
+      where: { id: itemId },
+    });
+
     return res.json({ message: 'Menu item deleted successfully.' });
   } catch (error) {
-    return res.status(500).json({ message: 'Failed to delete menu item.' });
+    console.error('deleteMenuItem error:', error);
+    return res.status(500).json({ message: error.message || 'Failed to delete menu item.' });
   }
 };
 

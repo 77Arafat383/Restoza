@@ -67,4 +67,11 @@ router.post('/feedback', feedbackController.submitFeedback);
 // --- Sales & Analytics ---
 router.get('/analytics/dashboard', analyticsController.getDashboardMetrics);
 
+// --- Ingredient Shopping Requests (Chef & Manager) ---
+const ingredientController = require('../controllers/ingredientController');
+router.get('/ingredients', ingredientController.getIngredientRequests);
+router.post('/ingredients', requireAuth, ingredientController.createIngredientRequest);
+router.patch('/ingredients/:id/status', requireAuth, ingredientController.updateIngredientRequestStatus);
+router.delete('/ingredients/:id', requireAuth, ingredientController.deleteIngredientRequest);
+
 module.exports = router;

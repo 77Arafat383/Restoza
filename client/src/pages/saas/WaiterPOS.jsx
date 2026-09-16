@@ -4,7 +4,7 @@ import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import {
   UserCheck, Plus, Minus, Send, Receipt, CheckCircle, Clock,
-  UtensilsCrossed, AlertCircle, ShoppingBag, X, RefreshCw
+  UtensilsCrossed, AlertCircle, ShoppingBag, X, RefreshCw, Bell
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -16,13 +16,16 @@ export default function WaiterPOS() {
   const [categories, setCategories] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [settings, setSettings] = useState({ currencySymbol: '৳', taxRate: 10, serviceChargeRate: 5 });
-  const [selectedTable, setSelectedTable] = useState(null);
+  const [selectedTables, setSelectedTables] = useState([]); // Multi-table selection array
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [tableOrder, setTableOrder] = useState([]); // Cart items for selected table
+  const [tableOrder, setTableOrder] = useState([]); // Cart items for selected table(s)
   const [specialInstruction, setSpecialInstruction] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // Primary selected table for existing order details
+  const primaryTable = selectedTables[0] || null;
 
   useEffect(() => {
     fetchWaiterData();
@@ -56,10 +59,12 @@ export default function WaiterPOS() {
       setMenuItems(menuRes.data);
       if (settingsRes.data) setSettings(settingsRes.data);
 
-      // Keep current table selection updated if active
-      if (selectedTable) {
-        const updated = tablesRes.data.find((t) => t.id === selectedTable.id);
-        if (updated) setSelectedTable(updated);
+      // Keep current table selections updated
+      if (selectedTables.length > 0) {
+        const updatedSelected = selectedTables
+          .map((st) => tablesRes.data.find((t) => t.id === st.id))
+          .filter(Boolean);
+        setSelectedTables(updatedSelected);
       }
     } catch (err) {
       console.error('Failed to load waiter data:', err);
@@ -69,10 +74,29 @@ export default function WaiterPOS() {
   };
 
   const handleSelectTable = (table) => {
-    setSelectedTable(table);
+    setSelectedTables((prev) => {
+      const exists = prev.some((t) => t.id === table.id);
+      let updated;
+      if (exists) {
+        updated = prev.filter((t) => t.id !== table.id);
+      } else {
+        updated = [...prev, table];
+      }
+
+      if (updated.length === 1) {
+        setCustomerName(updated[0].orders?.[0]?.customerName || '');
+      } else if (updated.length > 1) {
+        setCustomerName(`Joined Tables (${updated.map((t) => t.tableNumber).join(', ')})`);
+      }
+      return updated;
+    });
+  };
+
+  const clearTableSelection = () => {
+    setSelectedTables([]);
     setTableOrder([]);
     setSpecialInstruction('');
-    setCustomerName(table.orders?.[0]?.customerName || '');
+    setCustomerName('');
   };
 
   const addToTableOrder = (item) => {
@@ -100,14 +124,17 @@ export default function WaiterPOS() {
   };
 
   const handleSendToKitchen = async () => {
-    if (!selectedTable || !tableOrder.length) return;
+    if (selectedTables.length === 0 || !tableOrder.length) return;
     setSubmitting(true);
 
     try {
+      const tableNumbers = selectedTables.map((t) => `Table ${t.tableNumber}`).join(' + ');
+
       await orderAPI.createOrder({
-        tableId: selectedTable.id,
+        tableId: selectedTables[0].id,
+        tableIds: selectedTables.map((t) => t.id),
         orderType: 'DINE_IN',
-        customerName: customerName || `Table ${selectedTable.tableNumber} Guest`,
+        customerName: customerName || `${tableNumbers} Guests`,
         specialInstruction,
         items: tableOrder.map((i) => ({
           menuItemId: i.id,
@@ -118,6 +145,7 @@ export default function WaiterPOS() {
 
       setTableOrder([]);
       setSpecialInstruction('');
+      setSelectedTables([]);
       await fetchWaiterData();
 
       confetti({
@@ -168,6 +196,23 @@ export default function WaiterPOS() {
 
   const orderSubtotal = tableOrder.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
+  // Collect all orders across all tables that are marked READY by the kitchen
+  const allReadyOrders = [];
+  tables.forEach((t) => {
+    if (t.orders && t.orders.length > 0) {
+      t.orders.forEach((ord) => {
+        if (ord.status === 'READY') {
+          allReadyOrders.push({
+            ...ord,
+            tableName: `Table ${t.tableNumber}`,
+            tableLocation: t.location,
+            tableId: t.id,
+          });
+        }
+      });
+    }
+  });
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       
@@ -180,6 +225,11 @@ export default function WaiterPOS() {
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               Waiter POS & Floor Service
+              {allReadyOrders.length > 0 && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-slate-950 animate-pulse">
+                  {allReadyOrders.length} Ready to Deliver!
+                </span>
+              )}
             </h2>
             <p className="text-xs text-slate-400">
               Assigned Waiter: <span className="text-amber-400 font-semibold">{user?.name || 'Arafat'}</span>
@@ -189,30 +239,138 @@ export default function WaiterPOS() {
 
         <button
           onClick={fetchWaiterData}
-          className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 self-end sm:self-auto"
+          className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 self-end sm:self-auto flex items-center gap-1.5 text-xs font-semibold"
           title="Refresh Floor"
         >
           <RefreshCw className="w-4 h-4" />
+          <span>Refresh</span>
         </button>
       </div>
+
+      {/* Prominent Banner: Food Ready for Table Delivery */}
+      {allReadyOrders.length > 0 && (
+        <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-950/80 via-restoza-dark-900 to-amber-950/80 border-2 border-emerald-500/60 shadow-2xl space-y-4 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 animate-pulse">
+                <Bell className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2 font-serif">
+                  Food Ready for Table Delivery!
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-slate-950">
+                    {allReadyOrders.length} Order{allReadyOrders.length > 1 ? 's' : ''} Ready
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-300">
+                  Kitchen Chef has completed prep! Deliver items to respective dining tables below:
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {allReadyOrders.map((ord) => (
+              <div
+                key={ord.id}
+                className="p-4 rounded-2xl bg-black/50 border border-emerald-500/50 hover:border-emerald-400 flex flex-col justify-between space-y-3 transition-all relative overflow-hidden shadow-lg"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-sm text-emerald-300 flex items-center gap-1.5 font-serif">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                      {ord.tableName}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-white/10 text-white">
+                      {ord.orderNumber}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 mb-2 font-medium">
+                    Guest: <strong className="text-white">{ord.customerName || 'Dine-in Guest'}</strong> ({ord.tableLocation})
+                  </p>
+
+                  {/* List of items to deliver to table */}
+                  <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 space-y-1.5 text-xs">
+                    <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider mb-1">Items to Deliver to Table:</p>
+                    {ord.orderItems?.map((oi) => (
+                      <div key={oi.id} className="flex items-center justify-between text-white font-semibold">
+                        <span>{oi.quantity}× {oi.menuItem?.name}</span>
+                        {oi.specialInstruction && (
+                          <span className="text-[10px] text-amber-300 italic font-normal">({oi.specialInstruction})</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center justify-between gap-2 border-t border-white/5">
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Ready {new Date(ord.updatedAt || ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <button
+                    onClick={() => handleMarkServed(ord.id)}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-glow-gold transition-all"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Mark Food Served</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Left Column: Interactive Restaurant Floor (5 Cols) */}
         <div className="lg:col-span-5 space-y-4">
-          <div className="p-5 rounded-3xl bg-restoza-dark-900 border border-white/10 shadow-xl">
-            <h3 className="text-base font-serif font-bold text-white mb-1">
-              Select Dining Table
-            </h3>
-            <p className="text-xs text-slate-400 mb-4">
-              Tap any table to take orders, view status, or request bill
-            </p>
+          <div className="p-5 rounded-3xl bg-restoza-dark-900 border border-white/10 shadow-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-serif font-bold text-white mb-0.5">
+                  Select Dining Table(s)
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Tap 1 or multiple tables to merge seating & take orders
+                </p>
+              </div>
+
+              {selectedTables.length > 0 && (
+                <button
+                  onClick={clearTableSelection}
+                  className="text-[11px] font-semibold text-slate-400 hover:text-white px-2 py-1 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10"
+                >
+                  Clear ({selectedTables.length})
+                </button>
+              )}
+            </div>
+
+            {/* Multi-table active selection banner */}
+            {selectedTables.length > 1 && (
+              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between animate-in fade-in">
+                <div>
+                  <span className="font-bold uppercase tracking-wider block text-[10px] text-amber-400">
+                    {selectedTables.length} Tables Joined
+                  </span>
+                  <span className="font-semibold text-white">
+                    {selectedTables.map((t) => `Table ${t.tableNumber}`).join(' + ')}
+                  </span>
+                </div>
+                <span className="px-2.5 py-1 rounded-full bg-amber-950/80 border border-amber-500/40 text-[10px] font-bold text-amber-300">
+                  {selectedTables.reduce((sum, t) => sum + (t.capacity || 0), 0)} Seats
+                </span>
+              </div>
+            )}
 
             {/* Grid of Tables */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {tables.map((table) => {
-                const isSelected = selectedTable?.id === table.id;
+                const selectedIndex = selectedTables.findIndex((t) => t.id === table.id);
+                const isSelected = selectedIndex !== -1;
                 const activeOrder = table.orders?.[0];
+                const isFoodReady = activeOrder?.status === 'READY';
 
                 const statusStyles = {
                   AVAILABLE: 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300 hover:border-emerald-400',
@@ -226,29 +384,42 @@ export default function WaiterPOS() {
                     key={table.id}
                     onClick={() => handleSelectTable(table)}
                     className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between h-28 ${
-                      statusStyles[table.status]
-                    } ${isSelected ? 'ring-2 ring-amber-400 shadow-glow-gold scale-[1.02]' : ''}`}
+                      isFoodReady
+                        ? 'border-emerald-400 bg-emerald-950/60 text-emerald-200 ring-2 ring-emerald-400 shadow-glow-gold animate-pulse'
+                        : statusStyles[table.status]
+                    } ${isSelected ? 'ring-2 ring-amber-400 shadow-glow-gold scale-[1.02] bg-amber-950/40 border-amber-400' : ''}`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-bold text-sm text-white">
                         {table.tableNumber}
                       </span>
-                      <span className="text-[10px] font-semibold opacity-70">
-                        {table.capacity}P
-                      </span>
+                      {isSelected ? (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500 text-slate-950">
+                          #{selectedIndex + 1}
+                        </span>
+                      ) : isFoodReady ? (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-400 text-slate-950 uppercase tracking-wider animate-bounce">
+                          FOOD READY!
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-semibold opacity-70">
+                          {table.capacity}P
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-[10px]">
                       <p className="text-slate-400 truncate">{table.location}</p>
                       {activeOrder && (
-                        <p className="text-amber-300 font-bold uppercase mt-0.5 truncate">
+                        <p className={`font-bold uppercase mt-0.5 truncate ${isFoodReady ? 'text-emerald-300 text-xs flex items-center gap-1' : 'text-amber-300'}`}>
+                          {isFoodReady && <Bell className="w-3 h-3 text-emerald-400" />}
                           {activeOrder.status}
                         </p>
                       )}
                     </div>
 
                     <div className="text-[9px] font-bold uppercase tracking-wider">
-                      {table.status}
+                      {isFoodReady ? <span className="text-emerald-300">Deliver Food Now</span> : table.status}
                     </div>
                   </button>
                 );
@@ -257,11 +428,11 @@ export default function WaiterPOS() {
           </div>
 
           {/* If table is in CLEANING status, quick button to reset to AVAILABLE */}
-          {selectedTable?.status === 'CLEANING' && (
+          {primaryTable?.status === 'CLEANING' && (
             <div className="p-4 rounded-2xl bg-black/40 border border-slate-700 flex items-center justify-between text-xs">
-              <span className="text-slate-300">Table {selectedTable.tableNumber} sanitized & ready?</span>
+              <span className="text-slate-300">Table {primaryTable.tableNumber} sanitized & ready?</span>
               <button
-                onClick={() => handleToggleTableCleaning(selectedTable.id)}
+                onClick={() => handleToggleTableCleaning(primaryTable.id)}
                 className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
               >
                 Mark Available
@@ -272,45 +443,46 @@ export default function WaiterPOS() {
 
         {/* Right Column: Order Entry & Active Table Details (7 Cols) */}
         <div className="lg:col-span-7 space-y-4">
-          {selectedTable ? (
+          {selectedTables.length > 0 ? (
             <div className="p-6 rounded-3xl bg-restoza-dark-900 border border-white/10 shadow-xl space-y-6">
-              
+
               {/* Selected Table Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
-                    Active Table Focus
+                    {selectedTables.length > 1 ? `${selectedTables.length} Tables Joined` : 'Active Table Focus'}
                   </span>
                   <h3 className="text-xl font-bold font-serif text-white mt-1">
-                    Table {selectedTable.tableNumber} ({selectedTable.location})
+                    {selectedTables.map((t) => `Table ${t.tableNumber}`).join(' + ')}
+                    {selectedTables.length === 1 && ` (${selectedTables[0].location})`}
                   </h3>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold px-3 py-1 rounded-full bg-white/10 text-slate-300">
-                    Status: <strong className="text-white">{selectedTable.status}</strong>
+                    Seats: <strong className="text-white">{selectedTables.reduce((s, t) => s + (t.capacity || 0), 0)} Guests</strong>
                   </span>
                 </div>
               </div>
 
               {/* Existing Active Order on this table (if any) */}
-              {selectedTable.orders?.[0] && (
+              {primaryTable?.orders?.[0] && (
                 <div className="p-4 rounded-2xl bg-black/40 border border-amber-500/30 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-bold text-white">
-                        Current Order: #{selectedTable.orders[0].orderNumber}
+                        Current Order: #{primaryTable.orders[0].orderNumber}
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        Status: <strong className="text-amber-400 uppercase">{selectedTable.orders[0].status}</strong>
+                        Status: <strong className="text-amber-400 uppercase">{primaryTable.orders[0].status}</strong>
                       </p>
                     </div>
 
                     {/* Waiter Actions for active order */}
                     <div className="flex items-center gap-2">
-                      {selectedTable.orders[0].status === 'READY' && (
+                      {primaryTable.orders[0].status === 'READY' && (
                         <button
-                          onClick={() => handleMarkServed(selectedTable.orders[0].id)}
+                          onClick={() => handleMarkServed(primaryTable.orders[0].id)}
                           className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1 shadow"
                         >
                           <CheckCircle className="w-3.5 h-3.5" />
@@ -318,9 +490,9 @@ export default function WaiterPOS() {
                         </button>
                       )}
 
-                      {['SERVED', 'READY'].includes(selectedTable.orders[0].status) && (
+                      {['SERVED', 'READY'].includes(primaryTable.orders[0].status) && (
                         <button
-                          onClick={() => handleRequestBill(selectedTable.orders[0].id)}
+                          onClick={() => handleRequestBill(primaryTable.orders[0].id)}
                           className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1 shadow-glow-gold"
                         >
                           <Receipt className="w-3.5 h-3.5" />
@@ -332,7 +504,7 @@ export default function WaiterPOS() {
 
                   {/* Active Order Items */}
                   <div className="text-xs space-y-1 text-slate-300">
-                    {selectedTable.orders[0].orderItems?.map((oi) => (
+                    {primaryTable.orders[0].orderItems?.map((oi) => (
                       <div key={oi.id} className="flex justify-between py-0.5 border-b border-white/5">
                         <span>{oi.quantity}× {oi.menuItem?.name}</span>
                         <span>{currency}{oi.subtotal}</span>

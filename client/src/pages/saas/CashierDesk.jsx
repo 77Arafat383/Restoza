@@ -16,6 +16,8 @@ export default function CashierDesk() {
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [onlineProvider, setOnlineProvider] = useState('bKash');
   const [transactionId, setTransactionId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'UNPAID' | 'PAID'
   const [loading, setLoading] = useState(true);
   const [settling, setSettling] = useState(false);
 
@@ -34,26 +36,34 @@ export default function CashierDesk() {
     const handleRefresh = () => fetchCashierData();
     socket.on('bill_generated', handleRefresh);
     socket.on('payment_completed', handleRefresh);
+    socket.on('new_order', handleRefresh);
+    socket.on('order_status_updated', handleRefresh);
 
     return () => {
       socket.off('bill_generated', handleRefresh);
       socket.off('payment_completed', handleRefresh);
+      socket.off('new_order', handleRefresh);
+      socket.off('order_status_updated', handleRefresh);
     };
   }, [socket]);
 
   const fetchCashierData = async () => {
     try {
-      const [billsRes, unbilledRes, settingsRes] = await Promise.all([
+      const [billsRes, ordersRes, settingsRes] = await Promise.all([
         billAPI.getBills(),
-        orderAPI.getUnbilledOrders(),
+        orderAPI.getOrders(),
         settingsAPI.getSettings(),
       ]);
 
       setBills(billsRes.data);
-      setUnbilledOrders(unbilledRes.data);
       if (settingsRes.data) setSettings(settingsRes.data);
-      if (!selectedBill && billsRes.data.length > 0) {
-        setSelectedBill(billsRes.data[0]);
+
+      // Find active orders that have no bill generated yet
+      const unbilled = ordersRes.data.filter((o) => !o.bills || o.bills.length === 0);
+      setUnbilledOrders(unbilled);
+
+      if (billsRes.data.length > 0) {
+        setSelectedBill((prev) => (prev ? (billsRes.data.find((b) => b.id === prev.id) || billsRes.data[0]) : billsRes.data[0]));
       }
     } catch (err) {
       console.error('Failed to load cashier data:', err);
@@ -121,6 +131,19 @@ export default function CashierDesk() {
 
   const currency = settings.currencySymbol || '৳';
 
+  const filteredBills = bills.filter((b) => {
+    const matchesStatus = statusFilter === 'ALL' || b.status === statusFilter;
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return matchesStatus;
+
+    const billNum = (b.billNumber || '').toLowerCase();
+    const orderNum = (b.order?.orderNumber || '').toLowerCase();
+    const customer = (b.order?.customerName || '').toLowerCase();
+    const tableNum = b.order?.table ? `table ${b.order.table.tableNumber}`.toLowerCase() : '';
+
+    return matchesStatus && (billNum.includes(query) || orderNum.includes(query) || customer.includes(query) || tableNum.includes(query));
+  });
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
 
@@ -135,7 +158,7 @@ export default function CashierDesk() {
               Cashier Billing Desk & POS Settlement
             </h2>
             <p className="text-xs text-slate-400">
-              Process payments and automatically generate 80mm thermal receipts
+              Process payments, search previous invoice history, and generate 80mm thermal receipts
             </p>
           </div>
         </div>
@@ -190,72 +213,115 @@ export default function CashierDesk() {
             </div>
           )}
 
-          {/* Bills List */}
-          <div className="p-5 rounded-3xl bg-restoza-dark-900 border border-white/10 shadow-xl space-y-3">
-            <h3 className="text-base font-serif font-bold text-white mb-2">
-              Invoices & Bills Queue
-            </h3>
+          {/* Bills List & Search */}
+          <div className="p-5 rounded-3xl bg-restoza-dark-900 border border-white/10 shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-base font-serif font-bold text-white">
+                Invoices & Transaction History
+              </h3>
 
-            <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
-              {bills.map((bill) => {
-                const isSelected = selectedBill?.id === bill.id;
-                const isPaid = bill.status === 'PAID';
-
-                return (
-                  <div
-                    key={bill.id}
-                    onClick={() => setSelectedBill(bill)}
-                    className={`p-4 rounded-2xl border cursor-pointer transition-all ${isSelected
-                      ? 'border-emerald-500/70 bg-emerald-950/20 shadow-lg'
-                      : 'border-white/10 bg-black/30 hover:border-white/20'
+              {/* Status Filter Tabs */}
+              <div className="flex items-center gap-1 p-1 bg-black/40 border border-white/10 rounded-xl">
+                {[
+                  { id: 'ALL', label: `All (${bills.length})` },
+                  { id: 'UNPAID', label: `Unpaid (${bills.filter(b => b.status === 'UNPAID').length})` },
+                  { id: 'PAID', label: `Paid (${bills.filter(b => b.status === 'PAID').length})` },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setStatusFilter(t.id)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-all ${statusFilter === t.id
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
+                        : 'text-slate-400 hover:text-white'
                       }`}
                   >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="font-mono font-bold text-sm text-white">{bill.billNumber}</span>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          Order #{bill.order?.orderNumber} • {bill.order?.table ? `Table ${bill.order.table.tableNumber}` : 'Takeaway'}
-                        </p>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by invoice # (e.g. INV-2026-1001), order #, table, customer..."
+                className="w-full pl-9 pr-4 py-2 bg-black/40 border border-white/15 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-white"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Bills list */}
+            <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
+              {filteredBills.length > 0 ? (
+                filteredBills.map((bill) => {
+                  const isSelected = selectedBill?.id === bill.id;
+                  const isPaid = bill.status === 'PAID';
+
+                  return (
+                    <div
+                      key={bill.id}
+                      onClick={() => setSelectedBill(bill)}
+                      className={`p-4 rounded-2xl border cursor-pointer transition-all ${isSelected
+                        ? 'border-emerald-500/70 bg-emerald-950/20 shadow-lg'
+                        : 'border-white/10 bg-black/30 hover:border-white/20'
+                        }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className="font-mono font-bold text-sm text-white">{bill.billNumber}</span>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            Order #{bill.order?.orderNumber} • {bill.order?.table ? `Table ${bill.order.table.tableNumber}` : 'Takeaway'} • {bill.order?.customerName || 'Diner'}
+                          </p>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-base font-bold text-white font-mono">
+                            {currency}{bill.total}
+                          </span>
+                          <span
+                            className={`block text-[10px] font-bold uppercase tracking-wider mt-0.5 ${isPaid ? 'text-emerald-400' : 'text-amber-400'
+                              }`}
+                          >
+                            {bill.status}
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="text-right">
-                        <span className="text-base font-bold text-white font-mono">
-                          {currency}{bill.total}
-                        </span>
-                        <span
-                          className={`block text-[10px] font-bold uppercase tracking-wider mt-0.5 ${isPaid ? 'text-emerald-400' : 'text-amber-400'
-                            }`}
-                        >
-                          {bill.status}
-                        </span>
-                      </div>
+                      {isPaid && (
+                        <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between text-xs">
+                          <span className="text-slate-500 text-[11px] font-mono">
+                            {bill.payments?.[0]?.paymentMethod || 'CASH'}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenReceipt(bill.id);
+                            }}
+                            className="text-amber-400 hover:underline flex items-center gap-1 font-semibold"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>View Receipt</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
-
-                    {isPaid && (
-                      <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between text-xs">
-                        <span className="text-slate-500 text-[11px]">
-                          Paid via {bill.payments?.[0]?.paymentMethod || 'CASH'}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenReceipt(bill.id);
-                          }}
-                          className="text-amber-400 hover:underline flex items-center gap-1 font-semibold"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>View Receipt</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {bills.length === 0 && (
-                <p className="text-center py-10 text-slate-400 text-xs">
-                  No invoices generated yet.
-                </p>
+                  );
+                })
+              ) : (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  No transaction invoices found matching "{searchQuery}".
+                </div>
               )}
             </div>
           </div>
@@ -434,13 +500,41 @@ export default function CashierDesk() {
                   </button>
                 </form>
               ) : (
-                <div className="pt-2">
+                <div className="pt-2 space-y-3">
+                  <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-2 text-xs">
+                    <div className="flex items-center justify-between text-emerald-300 font-bold border-b border-emerald-500/20 pb-2">
+                      <span className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        Payment Settled
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-emerald-900/60 border border-emerald-500/40 text-[10px] font-mono">
+                        {selectedBill.payments?.[0]?.paymentMethod || 'CASH'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-slate-300 pt-1 text-[11px]">
+                      <div>
+                        <span className="text-slate-500">Transaction Ref:</span>{' '}
+                        <span className="font-mono text-white font-semibold">
+                          {selectedBill.payments?.[0]?.transactionId || 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Settled At:</span>{' '}
+                        <span className="text-white">
+                          {selectedBill.payments?.[0]?.createdAt
+                            ? new Date(selectedBill.payments[0].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
                   <button
                     onClick={() => handleOpenReceipt(selectedBill.id)}
                     className="w-full py-3 px-4 rounded-xl bg-restoza-burgundy-700 hover:bg-restoza-burgundy-800 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-glow-burgundy"
                   >
                     <Printer className="w-4 h-4" />
-                    <span>Print Receipt</span>
+                    <span>Print Thermal Receipt</span>
                   </button>
                 </div>
               )}

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { menuAPI, settingsAPI } from '../../services/api';
 import {
   Utensils, Plus, Edit2, Trash2, CheckCircle2, XCircle, Search,
-  Clock, DollarSign, Image as ImageIcon, Sparkles, X, AlertCircle
+  Clock, DollarSign, Image as ImageIcon, Sparkles, X, AlertCircle, Upload
 } from 'lucide-react';
 
 export default function MenuManagement() {
@@ -86,6 +86,21 @@ export default function MenuManagement() {
     setIsItemModalOpen(true);
   };
 
+  const handleImageFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size exceeds 5MB limit. Please choose a smaller image.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData((prev) => ({ ...prev, imageUrl: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSaveItem = async (e) => {
     e.preventDefault();
     try {
@@ -116,7 +131,7 @@ export default function MenuManagement() {
       await menuAPI.deleteItem(id);
       fetchData();
     } catch (err) {
-      alert('Failed to delete item.');
+      alert(err.response?.data?.message || 'Failed to delete item.');
     }
   };
 
@@ -145,7 +160,7 @@ export default function MenuManagement() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      
+
       {/* Top Action Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -180,11 +195,10 @@ export default function MenuManagement() {
         <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
           <button
             onClick={() => setSelectedCat('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-              selectedCat === 'all'
-                ? 'bg-amber-500 text-slate-950 font-bold'
-                : 'bg-white/5 text-slate-400 hover:text-white'
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${selectedCat === 'all'
+              ? 'bg-amber-500 text-slate-950 font-bold'
+              : 'bg-white/5 text-slate-400 hover:text-white'
+              }`}
           >
             All Categories ({items.length})
           </button>
@@ -192,11 +206,10 @@ export default function MenuManagement() {
             <button
               key={c.id}
               onClick={() => setSelectedCat(c.id.toString())}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                selectedCat === c.id.toString()
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'bg-white/5 text-slate-400 hover:text-white'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${selectedCat === c.id.toString()
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'bg-white/5 text-slate-400 hover:text-white'
+                }`}
             >
               {c.name} ({c._count?.items || 0})
             </button>
@@ -220,9 +233,8 @@ export default function MenuManagement() {
         {filteredItems.map((item) => (
           <div
             key={item.id}
-            className={`p-4 rounded-2xl bg-restoza-dark-900 border transition-all flex flex-col justify-between ${
-              item.isAvailable ? 'border-white/10 hover:border-amber-500/40' : 'border-red-900/30 opacity-70 bg-black/50'
-            }`}
+            className={`p-4 rounded-2xl bg-restoza-dark-900 border transition-all flex flex-col justify-between ${item.isAvailable ? 'border-white/10 hover:border-amber-500/40' : 'border-red-900/30 opacity-70 bg-black/50'
+              }`}
           >
             <div>
               <div className="flex gap-3">
@@ -280,11 +292,10 @@ export default function MenuManagement() {
                 <button
                   onClick={() => handleToggleAvailability(item.id)}
                   title={item.isAvailable ? 'Mark as Out of Stock' : 'Mark as Available'}
-                  className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg border transition-colors ${
-                    item.isAvailable
-                      ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900/60'
-                      : 'bg-red-950/60 border-red-500/30 text-red-300 hover:bg-red-900/60'
-                  }`}
+                  className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg border transition-colors ${item.isAvailable
+                    ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900/60'
+                    : 'bg-red-950/60 border-red-500/30 text-red-300 hover:bg-red-900/60'
+                    }`}
                 >
                   {item.isAvailable ? 'In Stock' : 'Out of Stock'}
                 </button>
@@ -389,15 +400,49 @@ export default function MenuManagement() {
                   />
                 </div>
 
-                <div className="col-span-2">
-                  <label className="block text-slate-300 font-medium mb-1">Image URL</label>
-                  <input
-                    type="url"
-                    value={formData.imageUrl}
-                    onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                    placeholder="https://..."
-                    className="w-full px-3 py-2 bg-black/40 border border-white/15 rounded-xl text-white focus:outline-none focus:border-amber-500"
-                  />
+                <div className="col-span-2 space-y-2">
+                  <label className="block text-slate-300 font-medium mb-1">Upload Dish Image</label>
+                  <div className="flex flex-col sm:flex-row items-center gap-3">
+                    {/* File Upload Button */}
+                    <label className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shrink-0">
+                      <Upload className="w-4 h-4" />
+                      <span>Upload Image File</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageFileChange}
+                        className="hidden"
+                      />
+                    </label>
+
+
+                  </div>
+
+                  {/* Image Preview Thumbnail */}
+                  {formData.imageUrl && (
+                    <div className="flex items-center gap-3 p-2.5 bg-black/40 border border-white/10 rounded-xl mt-2">
+                      <img
+                        src={formData.imageUrl}
+                        alt="Preview"
+                        className="w-12 h-12 object-cover rounded-lg border border-white/10 shrink-0"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                      <div className="flex-1 min-w-0 text-xs">
+                        <p className="font-semibold text-white truncate">Image Attached</p>
+                        <p className="text-[10px] text-slate-400 truncate font-mono">
+                          {formData.imageUrl.startsWith('data:') ? 'Base64 Uploaded File' : formData.imageUrl}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, imageUrl: '' })}
+                        className="p-1 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-white/5"
+                        title="Remove image"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="col-span-2">

@@ -78,6 +78,7 @@ const createOrder = async (req, res) => {
   try {
     const {
       tableId,
+      tableIds,
       customerName,
       customerPhone,
       orderType = 'DINE_IN',
@@ -137,11 +138,14 @@ const createOrder = async (req, res) => {
 
     const orderNumber = await generateOrderNumber();
     const waiterId = req.user ? req.user.id : null;
+    const primaryTableId = tableIds && Array.isArray(tableIds) && tableIds.length > 0 
+      ? parseInt(tableIds[0]) 
+      : (tableId ? parseInt(tableId) : null);
 
     const newOrder = await prisma.order.create({
       data: {
         orderNumber,
-        tableId: tableId ? parseInt(tableId) : null,
+        tableId: primaryTableId,
         waiterId,
         customerName: customerName || (req.user ? req.user.name : 'Guest Customer'),
         customerPhone: customerPhone || null,
@@ -166,10 +170,14 @@ const createOrder = async (req, res) => {
       },
     });
 
-    // If table assigned, mark table as OCCUPIED
-    if (tableId) {
-      await prisma.restaurantTable.update({
-        where: { id: parseInt(tableId) },
+    // If tables assigned, mark all selected tables as OCCUPIED
+    const targetTableIds = Array.isArray(tableIds) && tableIds.length > 0 
+      ? tableIds.map((id) => parseInt(id))
+      : (primaryTableId ? [primaryTableId] : []);
+
+    if (targetTableIds.length > 0) {
+      await prisma.restaurantTable.updateMany({
+        where: { id: { in: targetTableIds } },
         data: { status: 'OCCUPIED' },
       });
     }

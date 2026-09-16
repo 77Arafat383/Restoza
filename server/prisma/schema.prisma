@@ -120,7 +120,7 @@ model OrderItem {
   orderId            Int
   order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuItemId         Int
-  menuItem           MenuItem @relation(fields: [menuItemId], references: [id])
+  menuItem           MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
   quantity           Int      @default(1)
   unitPrice          Float
   subtotal           Float
@@ -190,4 +190,19 @@ model RestaurantSetting {
   phone            String   @default("+880 1711-234567")
   email            String   @default("contact@restoza.com")
   updatedAt        DateTime @updatedAt
+}
+
+model IngredientRequest {
+  id          Int      @id @default(autoincrement())
+  items       Json?    // List of ingredients: [{ name: string, quantity: string }]
+  ingredient  String?  // Legacy or summary field
+  quantity    String?  // Legacy or summary field
+  status      String   @default("PENDING") // PENDING, APPROVED, PURCHASED, REJECTED
+  requestedBy String   @default("Executive Chef")
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
 }
